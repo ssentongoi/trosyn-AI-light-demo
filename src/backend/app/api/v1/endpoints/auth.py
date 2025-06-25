@@ -6,7 +6,7 @@ from typing import Any
 
 from ....core.security import create_access_token, get_password_hash, verify_password
 from ....core.config import settings
-from ....db.session import get_db
+from ....database import get_db
 from ....schemas.response import LoginResponse
 from ....schemas.user import User, UserCreate, UserInDB
 from ....services.user import get_user_by_username, create_user
