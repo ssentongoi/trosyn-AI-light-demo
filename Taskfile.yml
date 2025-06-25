@@ -1,0 +1,77 @@
+version: '3'
+
+vars:
+  PYTHON: python3
+  STATUS_REPORT: reports/status_report.md
+  STATUS_CHARTS: reports/status_charts.png
+
+tasks:
+  default:
+    cmds:
+      - task --list
+    silent: true
+    desc: Show available tasks
+
+  # Status and Reporting
+  status:
+    cmds:
+      - task status:report
+      - task status:show
+    desc: Generate and show status report
+
+  status:report:
+    cmds:
+      - '{{.PYTHON}} detailed_status.py'
+      - echo "Status report generated at {{.STATUS_REPORT}}"
+    desc: Generate a detailed status report
+
+  status:show:
+    cmds:
+      - '{{if not (fileExists .STATUS_REPORT)}}echo "No status report found. Run 'task status:report' first" && exit 1{{end}}'
+      - '{{if eq .GITHUB_ACTIONS "true"}}cat {{.STATUS_REPORT}}{{else if (exec "which" "bat")}}bat -p {{.STATUS_REPORT}}{{else}}cat {{.STATUS_REPORT}}{{end}}'
+    desc: Show the status report
+
+  # Task Management
+  tasks:sync:
+    cmds:
+      - '{{.PYTHON}} sync_tasks.py'
+      - echo "Task statuses synchronized with STATUS.md"
+    desc: Sync task statuses with STATUS.md
+
+  task:new:
+    cmds:
+      - '{{.PYTHON}} scripts/create_task.py "{{.CLI_ARGS}}'
+    desc: Create a new task
+    silent: true
+
+  # Development
+  dev:setup:
+    cmds:
+      - pip install -r requirements-dev.txt
+      - pre-commit install
+    desc: Set up development environment
+
+  # Git Operations
+  git:pre-commit:
+    cmds:
+      - task tasks:sync
+      - git add STATUS.md
+    desc: Run pre-commit hooks
+
+  # Documentation
+  docs:serve:
+    cmds:
+      - '{{if (exec "which" "mkdocs")}}mkdocs serve{{else}}echo "MkDocs not found. Install with 'pip install mkdocs'"{{end}}'
+    desc: Serve documentation locally
+
+  docs:build:
+    cmds:
+      - '{{if (exec "which" "mkdocs")}}mkdocs build{{else}}echo "MkDocs not found. Install with 'pip install mkdocs'"{{end}}'
+    desc: Build documentation
+
+  # Cleanup
+  clean:
+    cmds:
+      - rm -rf __pycache__ .pytest_cache
+      - rm -f .coverage
+    desc: Clean up temporary files
