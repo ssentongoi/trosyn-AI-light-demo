@@ -1,0 +1,38 @@
+# Core dependencies
+fastapi>=0.95.0
+uvicorn[standard]>=0.21.0
+python-multipart>=0.0.6
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+python-dotenv>=1.0.0
+
+# LLM dependencies
+llama-cpp-python>=0.2.0
+
+# Document Processing
+unstructured[all-docs]>=0.10.0
+python-magic-bin>=0.4.14; sys_platform == "win32"
+python-magic>=0.4.27; sys_platform != "win32"
+
+# File handling
+python-magic>=0.4.27
+python-magic-bin>=0.4.14; platform_system == "Windows"
+
+# Async
+anyio>=3.6.2
+httpx>=0.23.0
+
+# Utilities
+pydantic>=2.0.0,<3.0.0
+python-multipart>=0.0.6
+shutil-ng>=0.8.0
+
+# Development
+debugpy>=1.6.6
+pytest>=7.3.1
+pytest-asyncio>=0.21.0
+pytest-cov>=4.0.0
+black>=23.7.0
+isort>=5.12.0
+mypy>=1.5.1
+types-requests>=2.31.0.1

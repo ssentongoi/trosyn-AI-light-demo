@@ -48,6 +48,22 @@ class Settings(BaseSettings):
     SYNC_INTERVAL: int = int(os.getenv("SYNC_INTERVAL", "300"))  # 5 minutes
     MAX_RETRY_ATTEMPTS: int = int(os.getenv("MAX_RETRY_ATTEMPTS", "3"))
     
+    # Memory Engine
+    MEMORY_STORAGE_PATH: Path = STORAGE_ROOT / "memory"
+    MEMORY_ENCRYPTION_KEY: Optional[bytes] = os.getenv("MEMORY_ENCRYPTION_KEY", None)
+    MEMORY_MAX_SIZE_MB: int = int(os.getenv("MEMORY_MAX_SIZE_MB", "10"))  # Max memory file size in MB
+    MEMORY_MAX_INTERACTIONS: int = int(os.getenv("MEMORY_MAX_INTERACTIONS", "1000"))  # Max number of interactions to keep
+    
+    @field_validator('MEMORY_ENCRYPTION_KEY', mode='before')
+    @classmethod
+    def validate_encryption_key(cls, v: Optional[str]) -> Optional[bytes]:
+        if v is None or v.lower() == "none":
+            return None
+        try:
+            return v.encode('utf-8')
+        except Exception as e:
+            raise ValueError(f"Invalid encryption key: {e}")
+    
     # Discovery
     DISCOVERY_ENABLED: bool = os.getenv("DISCOVERY_ENABLED", "true").lower() == "true"
     DISCOVERY_MULTICAST_GROUP: str = os.getenv("DISCOVERY_MULTICAST_GROUP", "239.255.255.250")

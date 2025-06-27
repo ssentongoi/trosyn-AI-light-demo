@@ -1,6 +1,7 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { MemoryProvider } from './contexts/MemoryContext';
 import Layout from './components/layout/Layout';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -8,6 +9,7 @@ import Dashboard from './pages/Dashboard';
 import SuperadminDashboard from './pages/SuperadminDashboard';
 import CompanyHub from './pages/CompanyHub';
 import LicensingSync from './pages/LicensingSync';
+import MemoryManagement from './pages/MemoryManagement';
 import './App.css';
 
 // A wrapper for protected routes
@@ -31,9 +33,25 @@ const ProtectedRoute = ({ children, requiredRole = null }) => {
   return children;
 };
 
+// Wrapper component to provide memory context to authenticated users
+const AuthenticatedApp = ({ children }) => {
+  const { currentUser } = useAuth();
+  
+  if (!currentUser) {
+    return children;
+  }
+  
+  return (
+    <MemoryProvider>
+      {children}
+    </MemoryProvider>
+  );
+};
+
 function App() {
   return (
     <AuthProvider>
+      <AuthenticatedApp>
       <Routes>
         {/* Public routes */}
         <Route path="/login" element={<Login />} />
@@ -61,11 +79,17 @@ function App() {
               <LicensingSync />
             </ProtectedRoute>
           } />
+          <Route path="memory" element={
+            <ProtectedRoute>
+              <MemoryManagement />
+            </ProtectedRoute>
+          } />
         </Route>
         
         {/* Fallback route */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </AuthenticatedApp>
     </AuthProvider>
   );
 }

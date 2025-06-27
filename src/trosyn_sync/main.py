@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from .core.discovery import DiscoveryService
 from .db import init_db, get_db
-from .api.endpoints import sync, documents
+from .api.endpoints import sync, documents, memory, processing
 
 # Initialize logger
 logging.basicConfig(level=logging.INFO)
@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 os.makedirs("storage/documents", exist_ok=True)
 os.makedirs("storage/versions", exist_ok=True)
 os.makedirs("storage/tmp", exist_ok=True)
+os.makedirs("storage/memory", exist_ok=True)
 
 # Global services
 discovery_service = None
@@ -66,9 +67,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(sync.router)
+# Include API routers
 app.include_router(documents.router)
+app.include_router(sync.router)
+app.include_router(memory.router)
+app.include_router(processing.router)
 
 @app.get("/status")
 async def get_status():

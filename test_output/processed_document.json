@@ -1,0 +1,52 @@
+[
+  {
+    "text": "This is a test document for the Trosyn AI document processing pipeline.",
+    "type": "NarrativeText",
+    "element_id": "dd2f17583c2e7b537ba3f6b0254742e0",
+    "metadata": {
+      "filename": "test_document.txt",
+      "filetype": ".txt",
+      "page_number": 1
+    }
+  },
+  {
+    "text": "This section contains introductory text about the test document.",
+    "type": "NarrativeText",
+    "element_id": "f9609b764e15af1e0d27100de731db9b",
+    "metadata": {
+      "filename": "test_document.txt",
+      "filetype": ".txt",
+      "page_number": 1
+    }
+  },
+  {
+    "text": "This section contains the main content of the test document. It includes multiple paragraphs to test the chunking functionality.",
+    "type": "NarrativeText",
+    "element_id": "1f1a7db7b3ae28ff61e5bd43d9299d03",
+    "metadata": {
+      "filename": "test_document.txt",
+      "filetype": ".txt",
+      "page_number": 1
+    }
+  },
+  {
+    "text": "Here's another paragraph in the same section to test how the document processor handles multiple paragraphs within the same section.",
+    "type": "NarrativeText",
+    "element_id": "b4a32978c8af8bcd17d43e7c589c49ec",
+    "metadata": {
+      "filename": "test_document.txt",
+      "filetype": ".txt",
+      "page_number": 1
+    }
+  },
+  {
+    "text": "This is the final section of the test document. It contains the concluding remarks and a test signature.",
+    "type": "NarrativeText",
+    "element_id": "6d259f39570a6108a91d26048b0f3d45",
+    "metadata": {
+      "filename": "test_document.txt",
+      "filetype": ".txt",
+      "page_number": 1
+    }
+  }
+]

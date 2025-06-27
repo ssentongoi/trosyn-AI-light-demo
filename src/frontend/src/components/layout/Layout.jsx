@@ -46,6 +46,12 @@ const Layout = () => {
           >
             Licensing & Sync
           </Link>
+          <Link 
+            to="/memory" 
+            className={location.pathname.startsWith('/memory') ? 'active' : ''}
+          >
+            Memory
+          </Link>
         </nav>
         <div className="user-menu">
           <span className="username">{currentUser?.username}</span>

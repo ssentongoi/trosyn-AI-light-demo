@@ -30,6 +30,15 @@ trosyn-ai/
     └── other/           # Miscellaneous prompts
 ```
 
+## 🤖 AI Models
+
+Trosyn AI integrates with state-of-the-art AI models for knowledge management and assistance:
+
+- **Gemini 3.1B**: Advanced language model for text generation and understanding
+- **Unstructured**: Document processing for various file formats (PDF, DOCX, TXT)
+
+For detailed information about model configurations and capabilities, see [AI Models Documentation](docs/architecture/ai_models.md).
+
 ## 📊 Project Status
 
 For the latest updates on project progress, see [STATUS.md](STATUS.md).
