@@ -97,3 +97,4 @@ tasks/archive/
 # Project specific exclusions
 !.gitkeep
 node_modules
+models/

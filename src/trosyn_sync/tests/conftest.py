@@ -1,14 +1,28 @@
 """
 Pytest configuration and fixtures for Trosyn Sync tests.
 """
+import asyncio
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 
 from trosyn_sync.models.base import Base
 
-# Test database configuration
+# Test configuration
 TEST_DATABASE_URL = "sqlite:///:memory:"
+
+# Async test configuration
+@pytest.fixture(scope="session")
+def event_loop():
+    """Create an instance of the default event loop for each test case."""
+    policy = asyncio.get_event_loop_policy()
+    loop = policy.new_event_loop()
+    yield loop
+    loop.close()
+
+@pytest.fixture
+def anyio_backend():
+    return 'asyncio'
 
 @pytest.fixture(scope="session")
 def engine():
