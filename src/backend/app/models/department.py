@@ -1,10 +1,10 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
-from app.database import Base
+from app.db.base import BaseModel  # Import BaseModel from the new location
 
-class Department(Base):
+class Department(BaseModel):
     __tablename__ = "departments"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -18,3 +18,4 @@ class Department(Base):
     # Relationships
     company = relationship("Company", back_populates="departments")
     users = relationship("User", back_populates="department")
+    documents = relationship("Document", back_populates="department")

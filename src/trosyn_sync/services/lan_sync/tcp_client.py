@@ -29,7 +29,8 @@ class TCPSyncClient:
         handler: ProtocolHandler,
         auth_callback: Optional[AuthCallback] = None,
         auto_reconnect: bool = True,
-        require_auth: bool = True
+        require_auth: bool = True,
+        verify_ssl: Optional[bool] = None
     ):
         """Initialize the TCP sync client.
         
@@ -39,6 +40,7 @@ class TCPSyncClient:
             auth_callback: Optional callback to get authentication data
             auto_reconnect: Whether to automatically reconnect on connection loss
             require_auth: Whether to require authentication for messages
+            verify_ssl: Whether to verify SSL certificates. If None, uses TROSYNC_VERIFY_SSL env var.
         """
         self.config = config
         self.handler = handler
@@ -56,10 +58,18 @@ class TCPSyncClient:
         # Tasks and timers
         self.reconnect_task: Optional[asyncio.Task] = None
         self.heartbeat_task: Optional[asyncio.Task] = None
+        self.receive_task: Optional[asyncio.Task] = None
         self.reconnect_delay = 5  # Initial reconnect delay in seconds
+        self._tasks: List[asyncio.Task] = []  # Track all background tasks
         
-        # SSL context
-        self.ssl_context = security.get_ssl_context(server_side=False) if self.config.use_ssl else None
+        # SSL context - use the new secure context with configurable verification
+        self.ssl_context = None
+        if self.config.use_ssl:
+            self.ssl_context = security.get_ssl_context(
+                server_side=False,
+                verify_cert=verify_ssl if verify_ssl is not None else None
+            )
+            logger.debug(f"Initialized SSL context with verify_mode={self.ssl_context.verify_mode}")
         
         # Register message handlers
         self.message_handlers = {
@@ -105,11 +115,12 @@ class TCPSyncClient:
             
             # Create SSL context if not provided
             if self.config.use_ssl and self.ssl_context is None:
-                logger.info("Creating default SSL context for client")
-                self.ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
-                self.ssl_context.check_hostname = False
-                self.ssl_context.verify_mode = ssl.CERT_NONE  # For testing with self-signed certs
-                logger.debug("Configured SSL context to not verify server certificate")
+                logger.info("Creating secure SSL context for client")
+                self.ssl_context = security.get_ssl_context(
+                    server_side=False,
+                    verify_cert=os.getenv('TROSYNC_VERIFY_SSL', '').lower() not in ('0', 'false', 'no', 'off')
+                )
+                logger.debug(f"Configured SSL context with verify_mode={self.ssl_context.verify_mode}")
             
             protocol = "SSL/TLS" if self.config.use_ssl else "TCP (unencrypted)"
             logger.info(f"Attempting to connect to {host}:{port} with {protocol}...")
@@ -185,18 +196,44 @@ class TCPSyncClient:
                 logger.error(f"Unexpected error during connection: {e}", exc_info=True)
                 raise
             
-            # Get server certificate
-            ssl_object = self.writer.get_extra_info('ssl_object')
-            if ssl_object:
-                cert = ssl_object.getpeercert()
-                logger.debug(f"Connected to server with certificate: {cert.get('subject', {})}")
+            # Log SSL/TLS connection details
+            if self.config.use_ssl and self.ssl_context:
+                ssl_object = self.writer.get_extra_info('ssl_object')
+                if ssl_object:
+                    try:
+                        # Log cipher information
+                        cipher = ssl_object.cipher()
+                        if cipher:
+                            logger.info(f"TLS connection using {cipher[0]} with {cipher[2]} encryption")
+                        
+                        # Log certificate details
+                        cert = ssl_object.getpeercert()
+                        if cert:
+                            logger.debug(f"Server certificate subject: {cert.get('subject', {})}")
+                            logger.debug(f"Server certificate issuer: {cert.get('issuer', {})}")
+                            logger.debug(f"Server certificate version: {cert.get('version', 'N/A')}")
+                            
+                            # Log certificate expiration
+                            not_after = dict(x[0] for x in cert.get('notAfter', []))
+                            if not_after:
+                                logger.debug(f"Certificate valid until: {not_after}")
+                                
+                    except Exception as e:
+                        logger.warning(f"Could not get SSL connection details: {e}", exc_info=True)
             
             self.connected = True
             logger.info(f"Connected to {host}:{port}")
             
             # Start the receive and heartbeat tasks
-            asyncio.create_task(self._receive_messages())
+            self.receive_task = asyncio.create_task(self._receive_messages())
             self.heartbeat_task = asyncio.create_task(self._send_heartbeats())
+            
+            # Track both tasks
+            self._tasks.extend([self.receive_task, self.heartbeat_task])
+            
+            # Add done callbacks to clean up
+            for task in [self.receive_task, self.heartbeat_task]:
+                task.add_done_callback(self._handle_task_done)
             
             # Notify connection handlers
             self._notify_connection_handlers(True)
@@ -212,31 +249,58 @@ class TCPSyncClient:
             await self._handle_connection_error()
             return False
     
+    async def _cancel_tasks(self) -> None:
+        """Cancel all background tasks."""
+        tasks = []
+        
+        if self.heartbeat_task and not self.heartbeat_task.done():
+            tasks.append(self.heartbeat_task)
+            self.heartbeat_task.cancel()
+            
+        if self.receive_task and not self.receive_task.done():
+            tasks.append(self.receive_task)
+            self.receive_task.cancel()
+            
+        if self.reconnect_task and not self.reconnect_task.done():
+            tasks.append(self.reconnect_task)
+            self.reconnect_task.cancel()
+        
+        # Cancel any other tracked tasks
+        for task in self._tasks[:]:
+            if not task.done():
+                tasks.append(task)
+                task.cancel()
+        
+        # Wait for all tasks to complete
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Clear the task list
+        self._tasks.clear()
+    
     async def disconnect(self) -> None:
-        """Disconnect from the server."""
-        if not self.connected or not self.writer:
+        """Disconnect from the server and clean up resources."""
+        if not self.connected and not self.writer:
             return
             
         logger.info("Disconnecting from server...")
         self.connected = False
         
-        # Cancel tasks
-        if self.heartbeat_task:
-            self.heartbeat_task.cancel()
-            try:
-                await self.heartbeat_task
-            except asyncio.CancelledError:
-                pass
+        # Cancel all background tasks
+        await self._cancel_tasks()
         
         # Close the connection
-        self.writer.close()
-        try:
-            await self.writer.wait_closed()
-        except Exception as e:
-            logger.error(f"Error closing connection: {e}")
+        if self.writer:
+            self.writer.close()
+            try:
+                await self.writer.wait_closed()
+            except Exception as e:
+                logger.debug(f"Error closing connection: {e}")
+            self.writer = None
         
         self.reader = None
-        self.writer = None
+        self.authenticated = False
+        self.auth_data = None
     
     async def _receive_messages(self) -> None:
         """Continuously receive and process messages from the server."""
@@ -497,6 +561,20 @@ class TCPSyncClient:
         # Schedule reconnection with exponential backoff
         self.reconnect_task = asyncio.create_task(self._reconnect())
     
+    def _handle_task_done(self, task: asyncio.Task) -> None:
+        """Handle task completion and clean up."""
+        try:
+            # Get the result to raise any exceptions
+            task.result()
+        except asyncio.CancelledError:
+            pass  # Task was cancelled, this is expected
+        except Exception as e:
+            logger.error(f"Background task failed: {e}", exc_info=True)
+        finally:
+            # Remove the task from our tracking list
+            if task in self._tasks:
+                self._tasks.remove(task)
+    
     async def _reconnect(self) -> None:
         """Attempt to reconnect to the server with exponential backoff."""
         if not self.auto_reconnect or self.connected:
@@ -532,14 +610,17 @@ class TCPSyncClient:
             self.writer.close()
             try:
                 await self.writer.wait_closed()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Error closing writer: {e}")
         
         # Reset state
         self.reader = None
         self.writer = None
         self.connected = False
         self.authenticated = False
+        
+        # Cancel any pending tasks
+        await self._cancel_tasks()
         
         # Cancel pending requests
         for future in self.pending_requests.values():

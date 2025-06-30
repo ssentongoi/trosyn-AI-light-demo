@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '../../../../test-utils';
+import { render, screen, waitFor } from '../../../test-utils';
 import ProtectedRoute from '../ProtectedRoute';
 import { useApp } from '../../../contexts/AppContext';
 

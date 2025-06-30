@@ -9,5 +9,18 @@ __version__ = "0.1.0"
 
 from .discovery import DiscoveryService, DeviceInfo
 from .protocol import ProtocolHandler, Message, MessageType
+from .sqlite_storage import SyncItem, SQLiteSyncStorage
 
-__all__ = ['DiscoveryService', 'ProtocolHandler', 'Message', 'MessageType', 'DeviceInfo']
+# For backward compatibility
+InMemorySyncStorage = SQLiteSyncStorage  # Use SQLite in-memory mode as a replacement
+
+__all__ = [
+    'DiscoveryService', 
+    'ProtocolHandler', 
+    'Message', 
+    'MessageType', 
+    'DeviceInfo',
+    'SyncItem',
+    'SQLiteSyncStorage',
+    'InMemorySyncStorage'
+]

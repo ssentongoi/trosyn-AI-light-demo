@@ -1,6 +1,6 @@
 import React from 'react';
 import { render } from '@testing-library/react';
-import { BrowserRouter as Router } from 'react-router-dom';
+import { MemoryRouter as Router } from 'react-router-dom';
 import { AppProvider } from './contexts/AppContext';
 
 // Mock the API module
@@ -33,7 +33,7 @@ jest.mock('./services/notification', () => {
   };
 });
 
-// Custom render function that wraps components with providers
+// A simplified test renderer that doesn't use the wrapper pattern
 const customRender = (
   ui,
   {
@@ -98,22 +98,38 @@ const customRender = (
     value: localStorageMock,
   });
 
-  // Wrap UI with providers
-  const Wrapper = ({ children }) => (
-    <AppProvider initialState={initialState}>
-      <Router>
-        {children}
-      </Router>
-    </AppProvider>
-  );
-
   // Set the URL for testing routes
   window.history.pushState({}, 'Test page', route);
 
-  // Return the rendered component and any testing utilities we need
+  // Create a test component that wraps the UI with providers
+  const TestProviders = ({ children }) => (
+    <Router>
+      <AppProvider initialState={initialState}>
+        {children}
+      </AppProvider>
+    </Router>
+  );
+
+  // Render the UI with the test providers
+  const result = render(
+    <TestProviders>
+      {ui}
+    </TestProviders>,
+    renderOptions
+  );
+
+  // Return the render result with our custom utilities
   return {
-    ...render(ui, { wrapper: Wrapper, ...renderOptions }),
+    ...result,
     localStorage: localStorageMock,
+    // Add a custom rerender function
+    rerender: (newUi, newOptions) => 
+      result.rerender(
+        <TestProviders>
+          {newUi}
+        </TestProviders>,
+        newOptions
+      ),
   };
 };
 

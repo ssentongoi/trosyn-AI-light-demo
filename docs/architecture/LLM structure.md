@@ -1,5 +1,6 @@
 Here’s a structured developer note on how to integrate Gemini 3.1B (quantized via gguf) with Unstructured for document parsing and reasoning inside Trosyn AI, designed for direct use inside your IDE or by any dev collaborator.
 
+
 🧠 Trosyn AI — Local Gemini 3.1B + Unstructured Integration
 Purpose: Load Gemini 3.1B at app startup (offline), parse documents using Unstructured, and route embeddings + metadata to the vector DB for fast, memory-based retrieval.
 

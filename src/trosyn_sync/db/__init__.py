@@ -9,10 +9,15 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker, scoped_session, Session as DBSession
 
-from ..models.base import Base, engine, SessionLocal
+# Import all models to ensure they are registered with SQLAlchemy
+from ..models import Base, get_db
+from ..models.auth import RefreshToken, AuthAuditLog
 
-# Re-export get_db from models.base
-from ..models.base import get_db
+# Create engine and session factory
+engine = create_engine("sqlite:///trosyn_sync.db")
+SessionLocal = scoped_session(
+    sessionmaker(autocommit=False, autoflush=False, bind=engine)
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,4 +51,13 @@ def get_session() -> DBSession:
 def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.execute("PRAGMA journal_mode=WAL")  # Enable Write-Ahead Logging for better concurrency
     cursor.close()
+
+# Create all tables if they don't exist
+def create_tables():
+    """Create all database tables."""
+    Base.metadata.create_all(bind=engine)
+
+# Initialize the database tables when this module is imported
+create_tables()

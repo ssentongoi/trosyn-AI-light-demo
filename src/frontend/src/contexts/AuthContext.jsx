@@ -1,109 +1,151 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../services/api';
+import authService from '../services/auth';
 
 const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [userRole, setUserRole] = useState(null);
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const navigate = useNavigate();
 
-  // Initialize auth state from localStorage
+  // Initialize auth state on mount
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
-    
-    if (token && storedUser) {
-      const user = JSON.parse(storedUser);
-      setCurrentUser(user);
-      setUserRole(user.role);
-      // Set default axios auth header
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    const initializeAuth = async () => {
+      try {
+        // Check if user is authenticated
+        const isAuthenticated = useCallback(() => {
+          const token = authService.getAccessToken();
+          return !!token && !authService.isTokenExpired(token);
+        }, []);
+
+        if (isAuthenticated()) {
+          // Token is valid, get user data
+          try {
+            const userData = await authService.getCurrentUser();
+            if (userData) {
+              setUser(userData);
+            } else {
+              console.log('No user data available');
+              await logout();
+            }
+          } catch (err) {
+            console.error('Error fetching user data:', err);
+            await logout();
+          }
+        }
+      } catch (err) {
+        console.error('Auth initialization error:', err);
+        await logout();
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initializeAuth();
+  }, [navigate]);
+
+  // Login user
+  const login = useCallback(async (username, password) => {
+    try {
+      setError(null);
+      setLoading(true);
+      
+      // Use the auth service to handle login
+      const { user, tokens } = await authService.login({ username, password });
+      
+      if (user) {
+        // Update state with the logged-in user
+        setUser(user);
+        return { success: true, user };
+      }
+      
+      throw new Error('Login failed: No user data received');
+    } catch (err) {
+      console.error('Login error:', err);
+      const errorMessage = err.message || 'Login failed. Please check your credentials and try again.';
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    } finally {
+      setLoading(false);
     }
-    
-    setLoading(false);
   }, []);
 
-  // Login function
-  const login = async (username, password) => {
-    const formData = new URLSearchParams();
-    formData.append('username', username);
-    formData.append('password', password);
-
+  // Register user
+  const register = useCallback(async (userData) => {
     try {
-      const response = await axios.post('/api/v1/auth/login', formData, {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-      });
-      const { access_token, user } = response.data;
-
-      // Store token and user in localStorage
-      localStorage.setItem('token', access_token);
-      localStorage.setItem('user', JSON.stringify(user));
-
-      // Update state
-      setCurrentUser(user);
-      setUserRole(user.role);
-
-      // Set default axios auth header
-      axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
-
-      return { success: true };
-    } catch (error) {
-      console.error('Login error:', error);
-      return {
-        success: false,
-        error: error.response?.data?.detail || 'Login failed',
-      };
+      setError(null);
+      setLoading(true);
+      
+      // Use the auth service to handle registration
+      const result = await authService.register(userData);
+      
+      if (result && result.user) {
+        // Update state with the registered user
+        setUser(result.user);
+        return { success: true, user: result.user };
+      }
+      
+      throw new Error('Registration failed: No user data received');
+    } catch (err) {
+      console.error('Registration error:', err);
+      const errorMessage = err.message || 'Registration failed. Please try again.';
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    } finally {
+      setLoading(false);
     }
-  };
+  }, []);
 
-  // Logout function
-  const logout = () => {
-    // Clear auth data
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    delete axios.defaults.headers.common['Authorization'];
-    
-    // Reset state
-    setCurrentUser(null);
-    setUserRole(null);
-    
-    // Redirect to login
-    navigate('/login');
-  };
-
-  // Register function
-  const register = async (userData) => {
+  // Logout user
+  const logout = useCallback(async () => {
     try {
-      const response = await axios.post('/api/v1/auth/register', userData);
-      return { success: true, data: response.data };
-    } catch (error) {
-      console.error('Registration error:', error);
-      return { 
-        success: false, 
-        error: error.response?.data?.detail || 'Registration failed' 
-      };
+      await authService.logout();
+    } catch (err) {
+      console.error('Logout error:', err);
+    } finally {
+      // Clear state
+      setUser(null);
+      setError(null);
+      
+      // Navigate to login page
+      navigate('/login');
     }
-  };
+  }, [navigate]);
 
-  const value = {
-    currentUser,
-    userRole,
+  // Clear errors
+  const clearError = useCallback(() => setError(null), []);
+
+  // Check if user has required role
+  const hasRole = useCallback((requiredRole) => {
+    if (!requiredRole) return true;
+    if (!user?.roles) return false;
+    
+    if (Array.isArray(requiredRole)) {
+      return requiredRole.some(role => user.roles.includes(role));
+    }
+    return user.roles.includes(requiredRole);
+  }, [user]);
+
+  // Memoize the context value to prevent unnecessary re-renders
+  const contextValue = useMemo(() => ({
+    user,
     loading,
+    error,
     login,
     logout,
     register,
-    isAuthenticated: !!currentUser,
-    isSuperadmin: userRole === 'superadmin',
-  };
+    hasRole,
+    clearError,
+    isAuthenticated: !!user,
+    isSuperadmin: user?.roles?.includes('superadmin') || false,
+  }), [user, loading, error, login, logout, register, hasRole, clearError]);
 
   return (
-    <AuthContext.Provider value={value}>
-      {children}
+    <AuthContext.Provider value={contextValue}>
+      {!loading && children}
     </AuthContext.Provider>
   );
 }

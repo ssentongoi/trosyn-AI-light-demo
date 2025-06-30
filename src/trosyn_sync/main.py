@@ -11,9 +11,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from .core.discovery import DiscoveryService
+from .core.discovery import DiscoveryService, get_discovery_service
 from .db import init_db, get_db
-from .api.endpoints import sync, documents, memory, processing
+from .api.endpoints import sync, documents, memory, processing, auth
 
 # Initialize logger
 logging.basicConfig(level=logging.INFO)
@@ -65,9 +65,11 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],  # For file downloads
 )
 
 # Include API routers
+app.include_router(auth.router)  # Auth endpoints first
 app.include_router(documents.router)
 app.include_router(sync.router)
 app.include_router(memory.router)

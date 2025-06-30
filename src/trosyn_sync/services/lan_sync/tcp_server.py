@@ -28,9 +28,19 @@ class TCPSyncServer:
         config: LANConfig,
         handler: ProtocolHandler,
         auth_middleware: Optional[AuthMiddleware] = None,
-        require_auth: bool = True
+        require_auth: bool = True,
+        verify_ssl: Optional[bool] = None
     ):
-        """Initialize the TCP sync server."""
+        """Initialize the TCP sync server.
+        
+        Args:
+            config: LAN configuration
+            handler: Protocol handler for message processing
+            auth_middleware: Optional authentication middleware
+            require_auth: Whether to require authentication for messages
+            verify_ssl: Whether to require client certificate verification.
+                      If None, uses TROSYNC_VERIFY_SSL env var.
+        """
         self.config = config
         self.handler = handler
         self.auth_middleware = auth_middleware
@@ -38,7 +48,15 @@ class TCPSyncServer:
         self.server: Optional[asyncio.Server] = None
         self.clients: Dict[str, Dict[str, Any]] = {}
         self.running = False
-        self.ssl_context = security.get_ssl_context(server_side=True) if self.config.use_ssl else None
+        
+        # Initialize SSL context if needed
+        self.ssl_context = None
+        if self.config.use_ssl:
+            self.ssl_context = security.get_ssl_context(
+                server_side=True,
+                verify_cert=verify_ssl if verify_ssl is not None else None
+            )
+            logger.debug(f"Initialized server SSL context with verify_mode={self.ssl_context.verify_mode}")
         self.public_handlers = {
             MessageType.AUTH_REQUEST: self._handle_auth_request,
             MessageType.HEARTBEAT: self._handle_heartbeat,
@@ -56,23 +74,71 @@ class TCPSyncServer:
         if self.running:
             return
 
-        ssl_context = self.ssl_context if self.config.use_ssl else None
-        try:
-            self.server = await asyncio.start_server(
-                self._handle_client,
-                host='0.0.0.0',
-                port=self.config.sync_port,
-                ssl=ssl_context,
-                reuse_address=True
+        if self.config.use_ssl and not self.ssl_context:
+            logger.warning("SSL is enabled but no SSL context is configured. Creating a new one...")
+            self.ssl_context = security.get_ssl_context(
+                server_side=True,
+                verify_cert=os.getenv('TROSYNC_VERIFY_SSL', '').lower() not in ('0', 'false', 'no', 'off')
             )
+
+        try:
+            # Configure server parameters
+            server_params = {
+                'client_connected_cb': self._handle_client,
+                'host': '0.0.0.0',  # Listen on all interfaces
+                'port': self.config.sync_port,
+                'ssl': self.ssl_context if self.config.use_ssl else None,
+                'reuse_address': True,
+                'reuse_port': False,
+                'start_serving': True
+            }
+            
+            # Log server startup details
+            protocol = "TLS" if self.ssl_context else "TCP (unencrypted)"
+            logger.info(f"Starting {protocol} server on port {self.config.sync_port}")
+            
+            if self.ssl_context:
+                ssl_context = self.ssl_context
+                logger.debug(f"SSL context settings: verify_mode={ssl_context.verify_mode}, "
+                            f"check_hostname={ssl_context.check_hostname}")
+                
+                # Log certificate information
+                try:
+                    cert = ssl_context.get_ca_certs()
+                    if cert:
+                        logger.debug(f"Loaded {len(cert)} CA certificates")
+                except Exception as e:
+                    logger.warning(f"Could not get CA certificates: {e}")
+            
+            # Start the server
+            self.server = await asyncio.start_server(**server_params)
+            
+            # Log server information
+            if self.server.sockets:
+                for sock in self.server.sockets:
+                    addr = sock.getsockname()
+                    logger.info(f"Server listening on {addr[0]}:{addr[1]} ({protocol})")
+                    
+                    # Log socket details
+                    logger.debug(f"Socket family: {sock.family.name if hasattr(sock, 'family') else 'N/A'}")
+                    logger.debug(f"Socket type: {sock.type.name if hasattr(sock, 'type') else 'N/A'}")
+                    logger.debug(f"Socket protocol: {sock.proto if hasattr(sock, 'proto') else 'N/A'}")
+                    
+        except OSError as e:
+            logger.error(f"Failed to start server on port {self.config.sync_port}: {e}")
+            if e.errno == 98:  # Address already in use
+                logger.error(f"Port {self.config.sync_port} is already in use. Please stop any other instances.")
+            raise
+        except ssl.SSLError as e:
+            logger.error(f"SSL error while starting server: {e}")
+            if "certificate verify failed" in str(e).lower():
+                logger.error("Certificate verification failed. Please check your certificate and key files.")
+            raise
         except Exception as e:
-            logger.error(f"Failed to start TCP server: {e}")
+            logger.error(f"Unexpected error while starting server: {e}", exc_info=True)
             raise
 
         self.running = True
-        addr = self.server.sockets[0].getsockname()
-        protocol = "TLS" if ssl_context else "TCP (unencrypted)"
-        logger.info(f"TCP sync server listening on {addr[0]}:{addr[1]} ({protocol})")
 
         # The server.serve_forever() task is essential for accepting new connections.
         self._tasks.append(asyncio.create_task(self.server.serve_forever()))
@@ -120,10 +186,35 @@ class TCPSyncServer:
         """Handle a new client connection."""
         client_id = str(uuid.uuid4())
         client_addr = writer.get_extra_info('peername')
+        
+        # Log SSL/TLS information if available
+        ssl_object = writer.get_extra_info('ssl_object')
+        if ssl_object:
+            try:
+                cipher = ssl_object.cipher()
+                if cipher:
+                    logger.debug(f"Client {client_addr} connected with {cipher[0]} {cipher[1]} {cipher[2]}")
+                
+                # Log client certificate if available
+                cert = ssl_object.getpeercert()
+                if cert:
+                    logger.debug(f"Client certificate subject: {cert.get('subject', {})}")
+                    logger.debug(f"Client certificate issuer: {cert.get('issuer', {})}")
+            except Exception as e:
+                logger.warning(f"Could not get SSL client info: {e}", exc_info=True)
+        
         logger.info(f"New connection from {client_addr} (ID: {client_id})")
 
-        self.clients[client_id] = {'writer': writer, 'authenticated': False, 'auth_data': None, 'last_seen': asyncio.get_event_loop().time()}
-
+        # Store client information
+        self.clients[client_id] = {
+            'reader': reader,
+            'writer': writer,
+            'addr': client_addr,
+            'authenticated': False,
+            'last_seen': asyncio.get_event_loop().time(),
+            'ssl_enabled': ssl_object is not None,
+            'cipher': cipher[0] if ssl_object and (cipher := ssl_object.cipher()) else None
+        }
         try:
             while self.running:
                 # Read message length (4 bytes)

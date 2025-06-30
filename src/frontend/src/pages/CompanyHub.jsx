@@ -8,15 +8,15 @@ import './Dashboard.css';
 const CompanyHub = () => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
-  const { 
-    company, 
-    departments, 
-    stats, 
-    loading, 
-    error, 
-    syncing, 
-    handleSyncNow, 
-    refetch 
+  const {
+    company,
+    departments,
+    stats,
+    loading,
+    error,
+    syncing,
+    handleSyncNow,
+    refetch
   } = useCompanyHub();
 
   useEffect(() => {
@@ -42,18 +42,26 @@ const CompanyHub = () => {
           <p className="text-muted">Manage your organization's AI environment</p>
         </div>
         <div className="dashboard-actions">
-          <button 
+          <button
             className={`btn btn-primary ${syncing ? 'btn-loading' : ''}`}
             onClick={handleSyncNow}
             disabled={syncing}
           >
             {syncing ? 'Syncing...' : 'Sync Now'}
           </button>
+           <button className="btn btn-secondary" onClick={refetch}>
+            <i className="fas fa-redo"></i> Refresh
+          </button>
         </div>
       </div>
-      
-      {error && <div className="alert alert-danger">{error}</div>}
-      
+
+      {error && (
+        <div className="alert alert-danger">
+            {error}
+            <button className="btn btn-sm btn-outline-danger ms-2" onClick={refetch}>Retry</button>
+        </div>
+      )}
+
       <div className="stats-grid">
         <div className="stat-card">
           <h3>Users</h3>
@@ -62,7 +70,7 @@ const CompanyHub = () => {
           </div>
           <div className="stat-label">Active</div>
         </div>
-        
+
         <div className="stat-card">
           <h3>Storage</h3>
           <div className="stat-value">
@@ -70,13 +78,13 @@ const CompanyHub = () => {
             <span className="stat-total">/ {company.maxStorageGB} GB</span>
           </div>
           <div className="stat-progress">
-            <div 
-              className="progress-bar" 
+            <div
+              className="progress-bar"
               style={{ width: `${(company.usedStorageGB / company.maxStorageGB) * 100}%` }}
             ></div>
           </div>
         </div>
-        
+
         <div className="stat-card">
           <h3>Last Sync</h3>
           <div className="stat-value">
@@ -86,7 +94,7 @@ const CompanyHub = () => {
             Next sync: {formatTimeUntil(company.nextSync)}
           </div>
         </div>
-        
+
         <div className="stat-card">
           <h3>License</h3>
           <div className="stat-value">
@@ -97,18 +105,18 @@ const CompanyHub = () => {
           </div>
         </div>
       </div>
-      
+
       <div className="dashboard-section">
         <div className="section-header">
           <h3>Departments</h3>
-          <button 
+          <button
             className="btn btn-sm btn-outline-primary"
             onClick={() => navigate('/departments/new')}
           >
             <i className="fas fa-plus"></i> Add Department
           </button>
         </div>
-        
+
         <div className="departments-grid">
           {departments.map(dept => (
             <div key={dept.id} className="department-card">
@@ -127,13 +135,13 @@ const CompanyHub = () => {
                 </div>
               </div>
               <div className="department-actions">
-                <button 
+                <button
                   className="btn btn-sm btn-outline-primary"
                   onClick={() => navigate(`/departments/${dept.id}`)}
                 >
                   View
                 </button>
-                <button 
+                <button
                   className="btn btn-sm btn-outline-secondary"
                   onClick={() => navigate(`/departments/${dept.id}/settings`)}
                 >
@@ -144,13 +152,14 @@ const CompanyHub = () => {
           ))}
         </div>
       </div>
-      
+
       <div className="dashboard-section">
         <div className="section-header">
           <h3>Recent Activity</h3>
           <button className="btn btn-sm btn-link">View All</button>
         </div>
         <div className="activity-feed">
+          {/* This could be dynamic data in a real app */}
           <div className="activity-item">
             <div className="activity-icon">
               <i className="fas fa-sync"></i>

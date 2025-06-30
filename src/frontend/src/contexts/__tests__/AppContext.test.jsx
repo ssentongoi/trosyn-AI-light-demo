@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, act, waitFor } from '../../../../test-utils';
+import { render, screen, act, waitFor } from '../../../test-utils';
 import { AppProvider, useApp } from '../AppContext';
 import authService from '../../services/auth';
 import notificationService from '../../services/notification';

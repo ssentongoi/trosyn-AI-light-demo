@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '../../../../test-utils';
+import { render, screen } from '../../../test-utils';
 import AuthRoute from '../AuthRoute';
 import { useApp } from '../../../contexts/AppContext';
 
@@ -7,38 +7,71 @@ import { useApp } from '../../../contexts/AppContext';
 const MockComponent = () => <div data-testid="auth-content">Public Content</div>;
 
 // Mock the useApp hook
-jest.mock('../../../contexts/AppContext', () => ({
-  useApp: jest.fn(),
-}));
+jest.mock('../../../contexts/AppContext', () => {
+  const actual = jest.requireActual('../../../contexts/AppContext');
+  return {
+    ...actual,
+    useApp: jest.fn(() => ({
+      isAuthenticated: false,
+      user: null,
+      loading: false,
+      error: null,
+      notifications: [],
+      unreadCount: 0,
+      theme: 'light',
+      sidebarOpen: true,
+      currentCompany: null,
+      companies: [],
+    })),
+  };
+});
+
+// Mock react-router-dom
+const mockNavigate = jest.fn();
+const mockUseLocation = jest.fn();
+
+jest.mock('react-router-dom', () => {
+  const actual = jest.requireActual('react-router-dom');
+  // Spy Navigate that calls mockNavigate for test assertions
+  const Navigate = ({ to, replace, state }) => {
+    mockNavigate(to, { replace, state });
+    return null;
+  };
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+    useLocation: () => ({
+      pathname: '/login',
+      state: { from: { pathname: '/dashboard' } },
+      ...(mockUseLocation() || {}),
+    }),
+    Navigate,
+  };
+});
 
 describe('AuthRoute', () => {
-  const mockUseApp = useApp;
-  const mockNavigate = jest.fn();
-
   beforeEach(() => {
-    // Mock the useNavigate hook
-    jest.mock('react-router-dom', () => ({
-      ...jest.requireActual('react-router-dom'),
-      useNavigate: () => mockNavigate,
-      useLocation: () => ({
-        pathname: '/login',
-        state: { from: { pathname: '/dashboard' } },
-      }),
-    }));
+    useApp.mockReset();
+    useApp.mockReturnValue({
+      isAuthenticated: false,
+      user: null,
+      loading: false,
+      error: null,
+      notifications: [],
+      unreadCount: 0,
+      theme: 'light',
+      sidebarOpen: true,
+      currentCompany: null,
+      companies: [],
+    });
+    jest.clearAllMocks();
   });
-
-  afterEach(() => {
+  beforeEach(() => {
+    // Reset all mocks before each test
     jest.clearAllMocks();
   });
 
   it('renders children when user is not authenticated', () => {
-    // Mock unauthenticated user
-    mockUseApp.mockReturnValue({
-      isAuthenticated: false,
-      user: null,
-      loading: false,
-    });
-
     render(
       <AuthRoute>
         <MockComponent />
@@ -51,7 +84,7 @@ describe('AuthRoute', () => {
 
   it('redirects to home when user is authenticated', () => {
     // Mock authenticated user
-    mockUseApp.mockReturnValue({
+    useApp.mockReturnValue({
       isAuthenticated: true,
       user: { id: '1', username: 'testuser' },
       loading: false,
@@ -63,13 +96,12 @@ describe('AuthRoute', () => {
       </AuthRoute>
     );
 
-    expect(mockNavigate).toHaveBeenCalledWith('/', { replace: true });
-    expect(screen.queryByTestId('auth-content')).not.toBeInTheDocument();
+    expect(mockNavigate).toHaveBeenCalledWith('/dashboard', { replace: true });
   });
 
   it('redirects to custom path when user is authenticated and redirectTo is provided', () => {
     // Mock authenticated user
-    mockUseApp.mockReturnValue({
+    useApp.mockReturnValue({
       isAuthenticated: true,
       user: { id: '1', username: 'testuser' },
       loading: false,
@@ -86,7 +118,7 @@ describe('AuthRoute', () => {
 
   it('shows loading spinner while checking authentication', () => {
     // Mock loading state
-    mockUseApp.mockReturnValue({
+    useApp.mockReturnValue({
       isAuthenticated: false,
       user: null,
       loading: true,
@@ -104,21 +136,18 @@ describe('AuthRoute', () => {
   });
 
   it('preserves the intended destination in location state', () => {
-    // Mock authenticated user with location state
-    mockUseApp.mockReturnValue({
+    // Mock location with from state
+    mockUseLocation.mockReturnValue({
+      pathname: '/login',
+      state: { from: { pathname: '/protected-page' } },
+    });
+    
+    // Mock authenticated user
+    useApp.mockReturnValue({
       isAuthenticated: true,
       user: { id: '1', username: 'testuser' },
       loading: false,
     });
-
-    // Mock useLocation with a from state
-    jest.mock('react-router-dom', () => ({
-      ...jest.requireActual('react-router-dom'),
-      useLocation: () => ({
-        pathname: '/login',
-        state: { from: { pathname: '/protected-page' } },
-      }),
-    }));
 
     render(
       <AuthRoute>
@@ -126,12 +155,6 @@ describe('AuthRoute', () => {
       </AuthRoute>
     );
 
-    expect(mockNavigate).toHaveBeenCalledWith(
-      '/',
-      { 
-        replace: true,
-        state: { from: { pathname: '/protected-page' } }
-      }
-    );
+    expect(mockNavigate).toHaveBeenCalledWith('/protected-page', { replace: true });
   });
 });

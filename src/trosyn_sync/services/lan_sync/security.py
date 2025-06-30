@@ -103,21 +103,49 @@ class SecurityManager:
         
         logger.info(f"Generated new SSL certificate: {self.cert_path}")
     
-    def get_ssl_context(self, server_side: bool = False) -> ssl.SSLContext:
+    def get_ssl_context(self, server_side: bool = False, verify_cert: Optional[bool] = None) -> ssl.SSLContext:
         """Get an SSL context for secure communication.
         
         Args:
             server_side: Whether this is a server-side context
+            verify_cert: Whether to verify SSL certificates. If None, uses TRUOSYNC_VERIFY_SSL env var or False.
             
         Returns:
             Configured SSLContext
+            
+        Note:
+            In production, always set verify_cert=True and provide proper CA certificates.
         """
-        # Create a new SSL context
+        # Create a new SSL context with modern security settings
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER if server_side else ssl.PROTOCOL_TLS_CLIENT)
         
-        # For testing: Disable all certificate verification
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
+        # Configure certificate verification based on parameter or environment
+        if verify_cert is None:
+            verify_cert = os.getenv('TROSYNC_VERIFY_SSL', '').lower() not in ('0', 'false', 'no', 'off')
+            
+        if verify_cert:
+            # Enable certificate verification
+            context.verify_mode = ssl.CERT_REQUIRED
+            context.check_hostname = not server_side  # Only check hostname for clients
+            
+            # Load system CA certificates
+            context.load_default_certs()
+            
+            # For server-side, load our certificate chain
+            if server_side:
+                if not self.cert_path.exists() or not self.key_path.exists():
+                    logger.warning("Certificate or key not found, generating new ones")
+                    self._ensure_keys_and_certs()
+                context.load_cert_chain(
+                    certfile=str(self.cert_path),
+                    keyfile=str(self.key_path)
+                )
+            logger.debug("SSL certificate verification is enabled")
+        else:
+            # For development/testing only
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+            logger.warning("SSL certificate verification is disabled. This is not secure for production use.")
         
         # Log the SSL configuration
         logger.debug(f"Created SSL context: server_side={server_side}, "

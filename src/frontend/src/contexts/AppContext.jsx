@@ -184,8 +184,8 @@ const appReducer = (state, action) => {
 const AppContext = createContext();
 
 // Context provider component
-export const AppProvider = ({ children }) => {
-  const [state, dispatch] = useReducer(appReducer, initialState);
+export const AppProvider = ({ children, initialState: initialStateOverride }) => {
+  const [state, dispatch] = useReducer(appReducer, initialStateOverride || initialState);
   const navigate = useNavigate();
 
   // Initialize app
