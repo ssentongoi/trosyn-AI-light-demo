@@ -1,147 +1,92 @@
-# Trosyn AI
+Trosyn AI
 
-**Trust + Sync + Node**
+Self-hosted, offline-first AI assistant for teams
 
-An offline-first, self-hosted enterprise knowledge and AI assistant platform.
+Trosyn AI brings modern AI capabilities—summarizing, rewriting, Q&A—straight to your own infrastructure. No cloud, no external servers. Just fast, secure AI working entirely on-premise.
 
-## Project Structure
+⸻
 
-```
-trosyn-ai/
-├── docs/                  # Project documentation
-│   ├── requirements/      # Requirements and specifications
-│   ├── architecture/      # System architecture and design
-│   └── api/               # API documentation
-│
-├── tasks/                # Task management
-│   ├── active/           # Currently active tasks
-│   ├── completed/        # Completed tasks
-│   └── backlog/         # Future tasks
-│
-├── src/                  # Source code
-│   ├── frontend/         # Frontend application
-│   ├── backend/          # Backend services
-│   └── shared/           # Shared code and utilities
-│
-└── prompts/             # AI assistant prompts
-    ├── frontend/        # Frontend-specific prompts
-    ├── backend/         # Backend-specific prompts
-    ├── shared/          # Shared prompts and protocols
-    └── other/           # Miscellaneous prompts
-```
+Core Features
+	•	Offline AI with Gemma 3N
+Lightweight, local LLM (transitioning soon), handling summarization, rewriting, document Q&A, redaction, and grammar—all without internet access.
+	•	Departmental Workspaces
+Dedicated, isolated AI hubs for HR, Finance, Legal, Marketing—managed centrally by admins.
+	•	Local Knowledge Memory
+Your documents are processed with embeddings and indexed securely on your infrastructure.
+	•	Admin Dashboard
+Control access, monitor usage, handle billing packages—all without needing cloud connectivity.
+	•	LAN Sync
+Optional local network syncing keeps multiple devices in sync—while staying offline.
 
-## 🤖 AI Models
+⸻
 
-Trosyn AI integrates with state-of-the-art AI models for knowledge management and assistance:
+ What Trosyn AI Is Not
+	•	Not cloud-based.
+	•	No external AI APIs.
+	•	No data ever leaves your servers.
+	•	No dependency on internet access for core functions.
 
-- **Gemini 3.1B**: Advanced language model for text generation and understanding
-- **Unstructured**: Document processing for various file formats (PDF, DOCX, TXT)
+⸻
 
-For detailed information about model configurations and capabilities, see [AI Models Documentation](docs/architecture/ai_models.md).
+🔧 Future Optional Add‑Ons
 
-## 📊 Project Status
+Connectors (Strictly opt-in)
 
-For the latest updates on project progress, see [STATUS.md](STATUS.md).
+Enable integrations with your systems, including:
+	•	Gmail
+	•	Google Drive
+	•	Slack
+	•	Microsoft Teams
+	•	Email systems
 
-## 🛠️ Task Management
+These connectors act as data bridges—they do not send core documents to external AI services.
 
-This project uses a robust task management system to track progress and coordinate development.
+⸻
 
-### Key Components
+Future Feature: Local AI Agents
 
-- **Task Files**: Individual task files in `tasks/{active,backlog,completed}/`
-- **Status Board**: Automatically generated `STATUS.md` file
-- **Task Creation**: Scripts to create and manage tasks
-- **Automated Reports**: Detailed status reports with metrics
+Coming soon: downloadable AI agents that automate multi-step tasks—for example:
+	•	HR Agent: Reviews incoming resumes, matches skills to roles, and pre-summarizes candidates.
+	•	Finance Agent: Monitors expense reports, flags anomalies, drafts summaries for review.
+	•	Legal Agent: Scans contracts for key clauses, redacts sensitive info, and highlights risks.
 
-### Using the Task System
+Agents run locally, are department-specific and optionally installed. Full admin control, no cloud needed.
 
-1. **Create a New Task**
-   ```bash
-   # Basic task
-   python3 scripts/create_task.py "Implement feature X"
+Use Cases
+	•	HR: Upload interview notes → get clean, precise summaries.
+	•	Legal: Process contracts → redact and extract key clauses offline.
+	•	Finance: Load quarterly reports → ask, “What spiked this month?” Get instant answers.
+
+⸻
+
+Upgradeable over time with connectors or agent modules when approved by your admin.
+
+⸻
+
+Repo Structure
+	•	/core – AI engine & admin backend
+	•	/modules – Department apps (HR, Legal, Finance…)
+	•	/agents – Planned future AI agents
+	•	/connectors – Optional third-party integration code
+	•	/docs – Architecture, setup guide, usage manual
+
+⸻
+
+	• Contact: ssentongoivan1@gmail.com
+
+⸻
+
+Why It Matters
+
+You get a no-compromise AI system:
+	•	Runs on your hardware
+	•	Preserves privacy
+	•	Requires no internet
+	•	Scales by department
+	•	Ready for future agents and integrations—fully under your control
+
+⸻
+
+Feel free to adapt this as your new README.md. It’s streamlined for clarity, professional tone, and next-step scalability.
    
-   # With additional options
-   python3 scripts/create_task.py "Fix critical bug" --priority high --status "in progress" --category "bugfix"
-   ```
-
-2. **Update Task Status**
-   - Edit the task file directly and update the `Status:` field
-   - The status will be automatically synced to `STATUS.md` on commit
-
-3. **Generate Status Report**
-   ```bash
-   # Generate a detailed status report
-   python3 detailed_status.py
-   
-   # View the report
-   cat reports/status_report.md
-   ```
-
-4. **Using Taskfile (optional)**
-   If you have [Task](https://taskfile.dev/) installed:
-   ```bash
-   # List available tasks
-   task
-   
-   # Generate and show status report
-   task status
-   
-   # Sync task statuses
-   task tasks:sync
-   ```
-
-### Task Statuses
-
-- ⏳ Pending: Task is queued but not started
-- 🔄 In Progress: Actively being worked on
-- ⛔ Blocked: Blocked by external factors
-- ✅ Done: Completed task
-
-## 📊 Project Status
-
-## Getting Started
-
-1. **Clone the repository**
-   ```
-   git clone https://github.com/your-username/trosyn-ai.git
-   cd trosyn-ai
-   ```
-
-2. **Set up the development environment**
-   - Install dependencies
-   - Configure environment variables
-   - Initialize the database
-
-3. **Run the application**
-   - Start the backend server
-   - Start the frontend development server
-
-## Key Features
-
-- **Offline-First** - Full functionality without internet connectivity
-- **Self-Hosted** - Complete data sovereignty and control
-- **Departmental Isolation** - Separate knowledge bases per department
-- **AI-Powered** - Local AI assistance with Gemini 3.1B (upgradable to 3N)
-- **Secure** - End-to-end encryption and access controls
-
-## Documentation
-
-Detailed documentation is available in the `docs/` directory:
-
-- [Requirements](./docs/requirements/README.md)
-- [Architecture](./docs/architecture/README.md)
-- [API Reference](./docs/api/README.md)
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## License
-
-This project is licensed under the [MIT License](LICENSE).
 # ssentongoi
