@@ -98,12 +98,9 @@ const customRender = (
     value: localStorageMock,
   });
 
-  // Set the URL for testing routes
-  window.history.pushState({}, 'Test page', route);
-
   // Create a test component that wraps the UI with providers
   const TestProviders = ({ children }) => (
-    <Router>
+    <Router initialEntries={[route]}>
       <AppProvider initialState={initialState}>
         {children}
       </AppProvider>

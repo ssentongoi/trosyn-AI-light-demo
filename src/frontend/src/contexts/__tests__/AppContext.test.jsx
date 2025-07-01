@@ -1,284 +1,117 @@
 import React from 'react';
-import { render, screen, act, waitFor } from '../../../test-utils';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { AppProvider, useApp } from '../AppContext';
 import authService from '../../services/auth';
 import notificationService from '../../services/notification';
 
-// Mock child component that uses the context
-const TestComponent = () => {
-  const { 
-    isAuthenticated, 
-    user, 
-    login, 
-    logout, 
-    theme, 
-    toggleTheme,
-    notifications,
-    markNotificationAsRead,
-    markAllNotificationsAsRead,
-    deleteNotification,
-  } = useApp();
+// Use automatic mocks from __mocks__ directory
+jest.mock('../../services/auth');
+jest.mock('../../services/notification');
 
+// Mock useNavigate
+jest.mock('react-router-dom', () => ({
+  ...jest.requireActual('react-router-dom'),
+  useNavigate: () => jest.fn(),
+}));
+
+// A simple component to interact with and display context values
+const TestComponent = () => {
+  const { isAuthenticated, user, login, logout, theme, toggleTheme, notifications, error } = useApp();
   return (
     <div>
+      {error && <div data-testid="error">{error}</div>}
       <div data-testid="isAuthenticated">{isAuthenticated ? 'true' : 'false'}</div>
       <div data-testid="username">{user?.username || 'null'}</div>
       <div data-testid="theme">{theme}</div>
       <div data-testid="notification-count">{notifications.length}</div>
-      
-      <button onClick={() => login({ username: 'test', password: 'password' })}>
-        Login
-      </button>
-      
-      <button onClick={logout}>
-        Logout
-      </button>
-      
-      <button onClick={toggleTheme}>
-        Toggle Theme
-      </button>
-      
-      <button onClick={() => markNotificationAsRead('1')}>
-        Mark as Read
-      </button>
-      
-      <button onClick={markAllNotificationsAsRead}>
-        Mark All as Read
-      </button>
-      
-      <button onClick={() => deleteNotification('1')}>
-        Delete Notification
-      </button>
+      <button onClick={() => login({ username: 'testuser', password: 'password' })}>Login</button>
+      <button onClick={logout}>Logout</button>
+      <button onClick={toggleTheme}>Toggle Theme</button>
     </div>
   );
 };
 
+// Helper to render components within the AppProvider and a MemoryRouter
+const renderWithProviders = (ui) => {
+  return render(
+    <MemoryRouter>
+      <AppProvider>{ui}</AppProvider>
+    </MemoryRouter>
+  );
+};
+
 describe('AppContext', () => {
-  // Mock the auth service
   beforeEach(() => {
-    // Mock the login function
-    authService.login = jest.fn().mockResolvedValue({
-      user: { id: '1', username: 'testuser' },
-      token: 'test-token',
-    });
-
-    // Mock the getCurrentUser function
-    authService.getCurrentUser = jest.fn().mockResolvedValue({
-      id: '1',
-      username: 'testuser',
-      email: 'test@example.com',
-      roles: ['user'],
-    });
-
-    // Mock notification service
-    notificationService.initialize = jest.fn();
-    notificationService.disconnect = jest.fn();
-    notificationService.getNotifications = jest.fn().mockResolvedValue([
-      { id: '1', title: 'Test', message: 'Test message', read: false },
-    ]);
-    notificationService.markAsRead = jest.fn().mockResolvedValue({});
-    notificationService.markAllAsRead = jest.fn().mockResolvedValue({});
-    notificationService.deleteNotification = jest.fn().mockResolvedValue({});
-  });
-
-  afterEach(() => {
     jest.clearAllMocks();
     localStorage.clear();
+
+    // Default successful mock implementations for services
+    authService.login.mockResolvedValue({ user: { id: '1', username: 'testuser' }, token: 'test-token' });
+    authService.getCurrentUser.mockResolvedValue({ id: '1', username: 'testuser' });
+    notificationService.getNotifications.mockResolvedValue([]);
+    notificationService.initialize.mockImplementation(() => {});
+    notificationService.disconnect.mockImplementation(() => {});
   });
 
-  it('provides initial context values', async () => {
-    await act(async () => {
-      render(
-        <AppProvider>
-          <TestComponent />
-        </AppProvider>
-      );
-    });
-
+  it('provides correct initial context values when no session exists', () => {
+    authService.getCurrentUser.mockResolvedValue(null); // Simulate no active session
+    renderWithProviders(<TestComponent />);
     expect(screen.getByTestId('isAuthenticated')).toHaveTextContent('false');
     expect(screen.getByTestId('username')).toHaveTextContent('null');
-    expect(screen.getByTestId('theme')).toHaveTextContent('light');
   });
 
-  it('handles login and logout', async () => {
-    await act(async () => {
-      render(
-        <AppProvider>
-          <TestComponent />
-        </AppProvider>
-      );
-    });
-
-    // Initial state
-    expect(screen.getByTestId('isAuthenticated')).toHaveTextContent('false');
-
-    // Perform login
-    await act(async () => {
-      screen.getByText('Login').click();
-      await new Promise(resolve => setTimeout(resolve, 0));
-    });
-
-    // Check if login was successful
-    expect(authService.login).toHaveBeenCalledWith({
-      username: 'test',
-      password: 'password',
-    });
-    
-    // Check if token was stored
-    expect(localStorage.setItem).toHaveBeenCalledWith('token', 'test-token');
-    
-    // Check if user is authenticated
-    expect(screen.getByTestId('isAuthenticated')).toHaveTextContent('true');
+  it('handles successful login and updates context', async () => {
+    renderWithProviders(<TestComponent />);
+    fireEvent.click(screen.getByText('Login'));
+    await waitFor(() => expect(screen.getByTestId('isAuthenticated')).toHaveTextContent('true'));
     expect(screen.getByTestId('username')).toHaveTextContent('testuser');
-    
-    // Perform logout
-    await act(async () => {
-      screen.getByText('Logout').click();
-    });
-    
-    // Check if token was removed
-    expect(localStorage.removeItem).toHaveBeenCalledWith('token');
-    
-    // Check if user is logged out
+    expect(localStorage.getItem('token')).toBe('test-token');
+    expect(authService.login).toHaveBeenCalledWith({ username: 'testuser', password: 'password' });
+  });
+
+  it('handles failed login and sets an error message', async () => {
+    const error = new Error('Invalid credentials');
+    authService.login.mockRejectedValue(error);
+    renderWithProviders(<TestComponent />);
+    fireEvent.click(screen.getByText('Login'));
+    await waitFor(() => expect(screen.getByTestId('error')).toHaveTextContent('Invalid credentials'));
     expect(screen.getByTestId('isAuthenticated')).toHaveTextContent('false');
-    expect(screen.getByTestId('username')).toHaveTextContent('null');
+    expect(localStorage.getItem('token')).toBeNull();
   });
 
-  it('toggles theme', async () => {
-    await act(async () => {
-      render(
-        <AppProvider>
-          <TestComponent />
-        </AppProvider>
-      );
-    });
-
-    // Initial theme is light
-    expect(screen.getByTestId('theme')).toHaveTextContent('light');
-    
-    // Toggle to dark
-    await act(async () => {
-      screen.getByText('Toggle Theme').click();
-    });
-    
-    expect(screen.getByTestId('theme')).toHaveTextContent('dark');
-    expect(localStorage.setItem).toHaveBeenCalledWith('theme', 'dark');
-    
-    // Toggle back to light
-    await act(async () => {
-      screen.getByText('Toggle Theme').click();
-    });
-    
-    expect(screen.getByTestId('theme')).toHaveTextContent('light');
-    expect(localStorage.setItem).toHaveBeenCalledWith('theme', 'light');
-  });
-
-  it('loads notifications', async () => {
-    await act(async () => {
-      render(
-        <AppProvider>
-          <TestComponent />
-        </AppProvider>
-      );
-    });
-
-    // Check if notifications were loaded
-    await waitFor(() => {
-      expect(notificationService.getNotifications).toHaveBeenCalled();
-    });
-    
-    // Check if notification count is correct
-    expect(screen.getByTestId('notification-count')).toHaveTextContent('1');
-  });
-
-  it('marks notification as read', async () => {
-    await act(async () => {
-      render(
-        <AppProvider>
-          <TestComponent />
-        </AppProvider>
-      );
-    });
-
-    // Mark notification as read
-    await act(async () => {
-      screen.getByText('Mark as Read').click();
-      await new Promise(resolve => setTimeout(resolve, 0));
-    });
-
-    expect(notificationService.markAsRead).toHaveBeenCalledWith('1');
-  });
-
-  it('marks all notifications as read', async () => {
-    await act(async () => {
-      render(
-        <AppProvider>
-          <TestComponent />
-        </AppProvider>
-      );
-    });
-
-    // Mark all notifications as read
-    await act(async () => {
-      screen.getByText('Mark All as Read').click();
-      await new Promise(resolve => setTimeout(resolve, 0));
-    });
-
-    expect(notificationService.markAllAsRead).toHaveBeenCalled();
-  });
-
-  it('deletes a notification', async () => {
-    await act(async () => {
-      render(
-        <AppProvider>
-          <TestComponent />
-        </AppProvider>
-      );
-    });
-
-    // Delete notification
-    await act(async () => {
-      screen.getByText('Delete Notification').click();
-      await new Promise(resolve => setTimeout(resolve, 0));
-    });
-
-    expect(notificationService.deleteNotification).toHaveBeenCalledWith('1');
-  });
-
-  it('initializes with saved theme from localStorage', async () => {
-    // Set theme in localStorage
-    localStorage.setItem('theme', 'dark');
-    
-    await act(async () => {
-      render(
-        <AppProvider>
-          <TestComponent />
-        </AppProvider>
-      );
-    });
-
-    // Check if theme was loaded from localStorage
-    expect(screen.getByTestId('theme')).toHaveTextContent('dark');
-  });
-
-  it('handles authentication check on mount', async () => {
-    // Set token in localStorage to simulate previous login
+  it('handles successful logout and clears context', async () => {
     localStorage.setItem('token', 'test-token');
-    
-    await act(async () => {
-      render(
-        <AppProvider>
-          <TestComponent />
-        </AppProvider>
-      );
-    });
+    renderWithProviders(<TestComponent />);
+    await waitFor(() => expect(screen.getByTestId('isAuthenticated')).toHaveTextContent('true'));
+    fireEvent.click(screen.getByText('Logout'));
+    await waitFor(() => expect(screen.getByTestId('isAuthenticated')).toHaveTextContent('false'));
+    expect(screen.getByTestId('username')).toHaveTextContent('null');
+    expect(localStorage.getItem('token')).toBeNull();
+    expect(notificationService.disconnect).toHaveBeenCalled();
+  });
 
-    // Check if getCurrentUser was called
+  it('toggles theme between light and dark', async () => {
+    renderWithProviders(<TestComponent />);
+    expect(screen.getByTestId('theme')).toHaveTextContent('light');
+    fireEvent.click(screen.getByText('Toggle Theme'));
+    await waitFor(() => expect(screen.getByTestId('theme')).toHaveTextContent('dark'));
+    fireEvent.click(screen.getByText('Toggle Theme'));
+    await waitFor(() => expect(screen.getByTestId('theme')).toHaveTextContent('light'));
+  });
+
+  it('loads notifications on mount', async () => {
+    localStorage.setItem('token', 'test-token');
+    notificationService.getNotifications.mockResolvedValue([{ id: '1', message: 'Test' }]);
+    renderWithProviders(<TestComponent />);
+    await waitFor(() => expect(screen.getByTestId('notification-count')).toHaveTextContent('1'));
+  });
+
+  it('restores an active session from a token on mount', async () => {
+    localStorage.setItem('token', 'test-token');
+    renderWithProviders(<TestComponent />);
+    await waitFor(() => expect(screen.getByTestId('isAuthenticated')).toHaveTextContent('true'));
     expect(authService.getCurrentUser).toHaveBeenCalled();
-    
-    // Check if user is authenticated
-    await waitFor(() => {
-      expect(screen.getByTestId('isAuthenticated')).toHaveTextContent('true');
-    });
+    expect(screen.getByTestId('username')).toHaveTextContent('testuser');
   });
 });

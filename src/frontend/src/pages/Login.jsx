@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { useApp } from '../contexts/AppContext';
 import './Auth.css';
 
 const Login = () => {
@@ -8,9 +8,7 @@ const Login = () => {
     username: '',
     password: '',
   });
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, error, loading } = useApp();
   const navigate = useNavigate();
 
   const handleChange = (e) => {
@@ -23,30 +21,8 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log('[Login.jsx] handleSubmit triggered');
-    setError('');
-    setLoading(true);
-
-    try {
-      console.log('[Login.jsx] Calling login with:', formData.username);
-      const result = await login(formData.username, formData.password);
-      console.log('[Login.jsx] Login result:', result);
-
-      if (result.success) {
-        console.log('[Login.jsx] Login successful, navigating to dashboard');
-        navigate('/dashboard');
-      } else {
-        console.log('[Login.jsx] Login failed, setting error:', result.error);
-        setError(result.error || 'Login failed');
-      }
-    } catch (err) {
-      console.log('[Login.jsx] An unexpected error occurred:', err);
-      setError('An unexpected error occurred');
-      console.error('Login error:', err);
-    } finally {
-      console.log('[Login.jsx] handleSubmit finished');
-      setLoading(false);
-    }
+    await login(formData.username, formData.password);
+    // Navigation will be handled by the AppContext or a listener if login is successful
   };
 
   return (

@@ -321,7 +321,6 @@ export const AppProvider = ({ children, initialState: initialStateOverride }) =>
         type: actionTypes.LOGIN_FAILURE, 
         payload: { error: error.message || 'Login failed' } 
       });
-      throw error;
     } finally {
       dispatch({ type: actionTypes.SET_LOADING, payload: false });
     }

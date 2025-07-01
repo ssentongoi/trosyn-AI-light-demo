@@ -86,6 +86,7 @@ logs/
 .coverage
 htmlcov/
 .pytest_cache/
+src/frontend/coverage/
 
 # Task specific
 tasks/archive/
