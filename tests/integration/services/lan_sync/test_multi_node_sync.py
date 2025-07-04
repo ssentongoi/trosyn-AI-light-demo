@@ -13,10 +13,10 @@ import os
 # Add the project root to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../../')))
 
-from trosyn_sync.services.lan_sync.sync_engine import SyncEngine
+from trosyn_sync.services.sync_engine import SyncEngine
 from trosyn_sync.services.lan_sync.storage import SyncItem
 from trosyn_sync.services.lan_sync.sqlite_storage import SQLiteSyncStorage
-from trosyn_sync.services.lan_sync.discovery import NodeType
+
 
 # Import test utilities
 from . import TestLANConfigBuilder, TCPSyncTestEnvironment, create_test_environment

@@ -27,10 +27,16 @@ class LANConfig:
     sync_port: int = 5001
     use_ssl: bool = True
     file_port: int = 5002
+    connect_timeout: float = 30.0  # seconds to wait for connection to be established
     
     # Discovery settings
     discovery_interval: int = 30  # seconds
     device_timeout: int = 90  # seconds before considering a device offline
+    
+    # Heartbeat settings
+    heartbeat_interval: int = 30  # seconds between heartbeats
+    heartbeat_timeout: int = 10  # seconds to wait for heartbeat response
+    max_missed_heartbeats: int = 3  # number of missed heartbeats before considering connection dead
     
     # Security
     require_authentication: bool = True
@@ -74,7 +80,10 @@ class LANConfig:
             "ssl_ca_certs": self.ssl_ca_certs,
             "ssl_ciphers": self.ssl_ciphers,
             "ssl_verify_mode": self.ssl_verify_mode,
-            "ssl_check_hostname": self.ssl_check_hostname
+            "ssl_check_hostname": self.ssl_check_hostname,
+            "heartbeat_interval": self.heartbeat_interval,
+            "heartbeat_timeout": self.heartbeat_timeout,
+            "max_missed_heartbeats": self.max_missed_heartbeats
         }
     
     @classmethod

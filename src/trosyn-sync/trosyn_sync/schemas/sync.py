@@ -1,4 +1,4 @@
-from typing import List
+from typing import Any, List
 from pydantic import BaseModel
 
 
@@ -9,9 +9,16 @@ class DocumentVersion(BaseModel):
 
 
 class SyncRequest(BaseModel):
-    """Request body for a sync operation from a peer."""
+    """Request body for a sync operation from a peer.
+    
+    Attributes:
+        node_id: The ID of the node making the request
+        manifest: List of document versions in the node's manifest
+        documents: Optional list of full document objects being synced
+    """
     node_id: str
     manifest: List[DocumentVersion]
+    documents: List[Any] = []  # List of full document objects
 
 
 class SyncPlan(BaseModel):

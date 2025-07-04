@@ -11,8 +11,10 @@ from typing import Optional, Tuple, Dict, Any, List
 
 from jose import JWTError
 from sqlalchemy.orm import Session
+from fastapi import Depends
 
 from ..core.auth import Token, TokenData, get_auth_service
+from ..db import get_db
 from ..models.auth import RefreshToken, AuthAuditLog
 
 logger = logging.getLogger(__name__)
@@ -263,6 +265,6 @@ class TokenService:
         return count
 
 
-def get_token_service(db: Session) -> TokenService:
+def get_token_service(db: Session = Depends(get_db)) -> "TokenService":
     """Dependency for getting a token service instance."""
     return TokenService(db)

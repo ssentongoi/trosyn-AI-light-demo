@@ -134,47 +134,49 @@ class TestProtocolHandler:
         assert signed_msg.signature is not None
         assert signed_msg.verify_signature(TEST_SECRET_KEY) is True
         
-    def test_validate_message(self):
-        """Test message validation."""
+    def test_validate_message_valid(self):
+        """Test validation of a completely valid message."""
         handler = ProtocolHandler(
             node_id=TEST_NODE_ID,
             node_name=TEST_NODE_NAME,
             secret_key=TEST_SECRET_KEY
         )
-
-        # Create a valid signed message
-        msg = handler.create_message(
-            MessageType.SYNC_REQUEST,
-            {"key": "value"},
-            sign=True
-        )
-
-        # Should be valid
+        msg = handler.create_message(MessageType.SYNC_REQUEST, {"key": "value"}, sign=True)
         is_valid, reason = handler.validate_message(msg)
         assert is_valid is True
         assert reason == ""
-        
-        # Test with invalid signature
-        original_signature = msg.signature
-        msg.signature = b"invalid-signature"
-        is_valid, reason = handler.validate_message(msg, check_signature=True)
+
+    def test_validate_message_invalid_signature(self):
+        """Test validation of a message with an invalid signature."""
+        handler = ProtocolHandler(
+            node_id=TEST_NODE_ID,
+            node_name=TEST_NODE_NAME,
+            secret_key=TEST_SECRET_KEY
+        )
+        msg = handler.create_message(MessageType.SYNC_REQUEST, {"key": "value"}, sign=True)
+        msg.signature = "invalid-signature"
+        is_valid, reason = handler.validate_message(msg)
         assert is_valid is False
-        # Check for either 'signature' or 'replay' in the error message
-        # since both are valid failure modes for an invalid signature
-        assert any(term in reason.lower() for term in ["signature", "replay"])
-        
-        # Restore original signature for subsequent tests
-        msg.signature = original_signature
-        
-        # Test with expired message
-        with patch('trosyn_sync.services.lan_sync.protocol.datetime') as mock_datetime:
-            # Set current time to 2x TTL in the future
-            mock_datetime.utcnow.return_value = (
-                datetime.utcnow() + timedelta(seconds=MESSAGE_TTL * 2)
-            )
-            is_valid, reason = handler.validate_message(msg, check_signature=False)
-            assert is_valid is False
-            assert "expired" in reason.lower()
+        assert "signature" in reason.lower()
+
+    def test_validate_message_expired(self):
+        """Test validation of an expired message."""
+        handler = ProtocolHandler(
+            node_id=TEST_NODE_ID,
+            node_name=TEST_NODE_NAME,
+            secret_key=TEST_SECRET_KEY
+        )
+        old_timestamp = (datetime.utcnow() - timedelta(seconds=MESSAGE_TTL * 2)).isoformat()
+        msg_expired = Message(
+            message_type=MessageType.SYNC_REQUEST,
+            payload={"key": "value"},
+            timestamp=old_timestamp,
+            source={"node_id": handler.node_id, "node_name": handler.node_name}
+        )
+        msg_expired.sign(TEST_SECRET_KEY)
+        is_valid, reason = handler.validate_message(msg_expired)
+        assert is_valid is False
+        assert "expired" in reason.lower()
             
     def test_replay_attack_protection(self):
         """Test that the same message can't be processed twice."""

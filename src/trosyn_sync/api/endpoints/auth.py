@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, HttpUrl
 from sqlalchemy.orm import Session
 
 from ...core.auth import Token, get_auth_service, TokenData, AuthService
-from ...core.discovery import get_discovery_service
+from ...core.discovery import DiscoveryService, get_discovery_service
 from ...db import get_db
 from ...services.token_service import TokenService, get_token_service
 
@@ -50,7 +50,8 @@ async def login_for_access_token(
     request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
-    token_service: TokenService = Depends(get_token_service)
+    token_service: TokenService = Depends(get_token_service),
+    discovery_service: DiscoveryService = Depends(get_discovery_service)
 ) -> TokenResponse:
     """
     OAuth2 compatible token login, get an access token for future requests.
@@ -63,7 +64,6 @@ async def login_for_access_token(
     your user database. For this implementation, we're using the node discovery
     service to validate node credentials.
     """
-    discovery_service = get_discovery_service()
     
     # Get client information from request
     client_id = form_data.client_id

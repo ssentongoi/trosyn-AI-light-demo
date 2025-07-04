@@ -147,6 +147,9 @@ class TestErrorHandling:
     
     async def test_server_disconnect(self, test_server, test_client):
         """Test client behavior when server disconnects."""
+        # Ensure client is connected
+        assert test_client.connected
+
         # Start a task that will be interrupted by server disconnect
         send_task = asyncio.create_task(
             test_client.send_message(
@@ -154,13 +157,13 @@ class TestErrorHandling:
                 wait_for_response=True
             )
         )
-        
+
         # Give it a moment to start
         await asyncio.sleep(0.1)
-        
+
         # Stop the server
         await test_server.stop()
-        
+
         # The send should fail with a connection error
         with pytest.raises(ConnectionError):
             await send_task

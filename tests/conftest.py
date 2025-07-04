@@ -1,162 +1,183 @@
 """
 Pytest configuration and fixtures for Trosyn Sync tests.
 """
-import asyncio
 import os
-from sqlalchemy import event
-import shutil
 import tempfile
+import logging
+import sys
+import shutil
 from pathlib import Path
-from typing import AsyncGenerator, Generator
+from typing import Generator, Any, Dict
 
 import pytest
-import pytest_asyncio
 from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
+from fastapi import FastAPI
+import time
+import uuid
+from trosyn_sync.core.discovery import get_discovery_service, NodeInfo
+from trosyn_sync.services.token_service import get_token_service
 
-from src.trosyn_sync.main import app
-from src.trosyn_sync.config import Settings
-from src.trosyn_sync.db import Base, SessionLocal, engine, init_db
-from src.trosyn_sync.models.base import get_db
-from src.trosyn_sync.services.storage import StorageService
+# Configure logging for tests
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stderr)
+    ]
+)
+
+# Set log level for specific noisy loggers
+logging.getLogger('asyncio').setLevel(logging.INFO)
+logging.getLogger('urllib3').setLevel(logging.INFO)
+logging.getLogger('httpx').setLevel(logging.INFO)
+logging.getLogger('httpcore').setLevel(logging.INFO)
+
+# Enable debug logging for our modules
+for module in ['trosyn_sync.services.lan_sync']:
+    logger = logging.getLogger(module)
+    logger.setLevel(logging.DEBUG)
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.pool import StaticPool
 from unittest.mock import patch, MagicMock
+from uuid import uuid4
+from datetime import datetime, timezone
+
+from trosyn_sync.main import app
+from trosyn_sync.config import Settings
+from trosyn_sync.db import Base, get_db
+from trosyn_sync.models.document import Document, DocumentVersion
+from trosyn_sync.models.node import Node
+from trosyn_sync.services.storage import StorageService
+
+# Setup Test Database
+SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def setup_test_db():
+    """
+    Create all tables once per test session.
+    """
+    # Import all models to ensure they are registered with Base
+    from trosyn_sync import models  # noqa
+    Base.metadata.create_all(bind=engine)
+    yield
+    Base.metadata.drop_all(bind=engine)
+
+
+
+def override_get_db():
+    """Dependency override for getting a test database session."""
+    db = TestingSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 # Test settings
-TEST_DB_URL = "sqlite:///:memory:"
-TEST_STORAGE_ROOT = "test_storage"
+TEST_STORAGE_PATH = "/tmp/trosyn_test_storage"
 
+@pytest.fixture(scope="function")
+def authenticated_client(db_session: Session) -> Generator[TestClient, None, None]:
+    """
+    Yields a TestClient authenticated as a specific test node.
 
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create an instance of the default event loop for each test case."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+    This fixture creates a node in the database, mocks the authentication
+    service, and ensures the app uses the same transactional DB session.
+    """
+    # 1. Override get_db to use the transactional session for this test
+    def override_get_db_for_test():
+        yield db_session
+
+    original_db_override = app.dependency_overrides.get(get_db)
+    app.dependency_overrides[get_db] = override_get_db_for_test
+
+    # 2. Create the test node in the database
+    test_node_id = "test-auth-node-" + str(uuid.uuid4())
+    db_node = Node(
+        node_id=test_node_id,
+        node_type="TROSYSN_DEPT_NODE",
+        hostname="auth-testhost",
+        ip_address="127.0.0.1",
+        port=8000,
+        is_trusted=True
+    )
+    db_session.add(db_node)
+    db_session.commit()  # Commits to the transaction, not the DB
+
+    # 3. Mock the authentication service
+    class MockAuthService(AuthService):
+        def verify_token(self, *args, **kwargs) -> TokenData:
+            return TokenData(node_id=test_node_id, node_type="TROSYSN_DEPT_NODE")
+
+    def override_get_auth_service():
+        return MockAuthService()
+
+    original_auth_override = app.dependency_overrides.get(get_auth_service)
+    app.dependency_overrides[get_auth_service] = override_get_auth_service
+
+    with TestClient(app) as client:
+        client.headers["Authorization"] = "Bearer testtoken"
+        yield client
+
+    # 4. Cleanup: restore original dependencies.
+    # The transaction rollback in db_session fixture handles DB cleanup.
+    app.dependency_overrides.pop(get_auth_service, None)
+    if original_auth_override:
+        app.dependency_overrides[get_auth_service] = original_auth_override
+
+    app.dependency_overrides.pop(get_db, None)
+    if original_db_override:
+        app.dependency_overrides[get_db] = original_db_override
 
 
 @pytest.fixture(scope="session")
 def test_settings() -> Settings:
     """Override settings for testing."""
-    # Create a temporary directory for test storage
-    temp_dir = Path(tempfile.mkdtemp(prefix="trosyn_test_"))
+    # Create a test settings object
+    settings = Settings(
+        NODE_ID="test-node",
+        NODE_DISPLAY_NAME="Test Node",
+        STORAGE_ROOT=TEST_STORAGE_PATH,
+        SECRET_KEY="test-secret-key",
+        ACCESS_TOKEN_EXPIRE_MINUTES=30
+    )
     
-    class TestSettings(Settings):
-        # Override settings with proper type annotations
-        DATABASE_URL: str = TEST_DB_URL
-        STORAGE_ROOT: Path = temp_dir / "storage"
-        DOCUMENTS_DIR: Path = STORAGE_ROOT / "documents"
-        VERSIONS_DIR: Path = STORAGE_ROOT / "versions"
-        TMP_DIR: Path = STORAGE_ROOT / "tmp"
-        NODE_ID: str = "test-node"
-        NODE_TYPE: str = "TROSYSN_TEST_NODE"
-        DISCOVERY_ENABLED: bool = False
-        
-        # Explicitly define model config to avoid Pydantic v2 warnings
-        model_config = {
-            "extra": "ignore",
-            "arbitrary_types_allowed": True,
-            "validate_assignment": True
-        }
+    # Create storage directory if it doesn't exist
+    os.makedirs(TEST_STORAGE_PATH, exist_ok=True)
     
-    # Apply test settings
-    settings = TestSettings()
-    
-    # Ensure clean up after tests
+    # Clean up function
     def cleanup():
-        if temp_dir.exists():
-            shutil.rmtree(temp_dir)
+        if os.path.exists(TEST_STORAGE_PATH):
+            shutil.rmtree(TEST_STORAGE_PATH)
     
-    # Register cleanup
     import atexit
     atexit.register(cleanup)
     
     return settings
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def mock_settings(monkeypatch, test_settings):
     """Patch settings for testing."""
-    # Patch settings
-    monkeypatch.setattr("src.trosyn_sync.config.settings", test_settings)
-    
-    # Recreate database tables
-    Base.metadata.create_all(bind=engine)
-    
-    # Create storage directories
-    test_settings.STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
-    test_settings.DOCUMENTS_DIR.mkdir(exist_ok=True)
-    test_settings.VERSIONS_DIR.mkdir(exist_ok=True)
-    test_settings.TMP_DIR.mkdir(exist_ok=True)
+    # Apply test settings
+    for key, value in test_settings.model_dump().items():
+        monkeypatch.setattr(f"trosyn_sync.config.settings.{key}", value)
     
     return test_settings
 
 
-@pytest.fixture(scope="function")
-def db_session(mock_settings) -> Generator[Session, None, None]:
-    """Create a clean database session for each test."""
-    # Clear any existing sessions
-    SessionLocal.remove()
-    
-    # Create a new connection and transaction
-    connection = engine.connect()
-    transaction = connection.begin()
-    
-    # Create a session bound to this connection
-    session = SessionLocal(bind=connection)
-    
-    # Begin a nested transaction (using SAVEPOINT)
-    nested = connection.begin_nested()
-    
-    # If the application code calls session.commit, it will end the nested
-    # transaction. Need to start a new one when that happens.
-    @event.listens_for(session, 'after_transaction_end')
-    def end_savepoint(session, transaction_inner):
-        nonlocal nested
-        if not nested.is_active and not connection.in_nested_transaction():
-            nested = connection.begin_nested()
-    
-    yield session
-    
-    # Cleanup
-    session.close()
-    transaction.rollback()
-    connection.close()
+from trosyn_sync.core.auth import AuthService, get_auth_service, TokenData
 
 
-@pytest.fixture(scope="function")
-def client(db_session):
-    """Create a test client for the FastAPI application."""
-    from fastapi.testclient import TestClient
-    
-    def override_get_db():
-        try:
-            yield db_session
-        finally:
-            pass
-
-    # Store original overrides
-    original_overrides = {}
-
-    try:
-        # Override the database dependency
-        if get_db in app.dependency_overrides:
-            original_overrides[get_db] = app.dependency_overrides[get_db]
-        app.dependency_overrides[get_db] = override_get_db
-
-        # Create a new test client for each test
-        with TestClient(app) as test_client:
-            yield test_client
-    finally:
-        # Restore original overrides
-        for dep, impl in original_overrides.items():
-            app.dependency_overrides[dep] = impl
-        app.dependency_overrides.update(original_overrides)
-
-
-@pytest.fixture(scope="function")
-def storage_service(mock_settings, db_session):
-    """Create a storage service with test settings."""
-    return StorageService()
 
 
 @pytest.fixture
@@ -168,6 +189,7 @@ def mock_llm_service():
         # Mock text generation
         mock_llm.return_value.generate_text.return_value = "Generated text response"
         yield mock_llm.return_value
+
 
 @pytest.fixture
 def mock_vector_store():
@@ -181,55 +203,101 @@ def mock_vector_store():
         ]
         yield mock_vs.return_value
 
+
 @pytest.fixture
-def test_document(db_session, storage_service):
+def test_owner_node(db_session: Session) -> Node:
+    """Creates a test node for ownership for general purpose."""
+    node = db_session.query(Node).filter(Node.node_id == "test-owner-node").first()
+    if not node:
+        node = Node(
+            node_id="test-owner-node",
+            node_type="TROSYSN_DEPT_NODE",
+            hostname="test-owner-host",
+            ip_address="127.0.0.1",
+            port=9001,
+            is_trusted=True
+        )
+        db_session.add(node)
+        db_session.commit()
+        db_session.refresh(node)
+    return node
+
+
+@pytest.fixture(scope="function")
+def db_session() -> Generator[Session, None, None]:
+    """Provide a test database session that rolls back changes after each test."""
+    connection = engine.connect()
+    transaction = connection.begin()
+    db = TestingSessionLocal(bind=connection)
+
+    try:
+        yield db
+    finally:
+        db.close()
+        transaction.rollback()
+        connection.close()
+
+
+@pytest.fixture(scope="function")
+def storage_service(tmp_path: Path) -> Generator[StorageService, None, None]:
+    """
+    Provides a StorageService instance configured with a temporary storage path.
+    Cleans up the storage directory after the test.
+    """
+    storage_dir = tmp_path / "test_storage"
+    storage_dir.mkdir(exist_ok=True, parents=True)
+    service = StorageService(storage_root=storage_dir)
+    yield service
+
+
+@pytest.fixture
+def test_document(db_session: Session, storage_service: StorageService, test_owner_node: Node) -> Document:
     """Create a test document in the database."""
-    from src.trosyn_sync.models.document import Document, DocumentVersion, DocumentChunk, ChunkType
+    from trosyn_sync.models.document import Document, DocumentVersion
+    import hashlib
+
+    # Create a dummy file content
+    file_content = b"This is a test document for Trosyn Sync."
+    file_hash = hashlib.sha256(file_content).hexdigest()
     
     # Create a test document
     doc = Document(
-        id=str(uuid4()),
-        filename="test_document.txt",
-        file_type="text/plain",
-        size=1024,
-        owner_id="test_user",
-        company_id="test_company"
+        owner_node_id=test_owner_node.id,
+        title="test_document.txt",
+        mime_type="text/plain",
+        file_extension="txt",
+        size_bytes=len(file_content),
+        metadata_={'source': 'test fixture'}
     )
     db_session.add(doc)
-    db_session.flush()
+    db_session.commit()
+    db_session.refresh(doc)
     
     # Create a document version
     version = DocumentVersion(
-        id=str(uuid4()),
         document_id=doc.id,
-        version=1,
-        storage_path=f"documents/{doc.id}/v1",
-        size=1024,
-        created_at=datetime.now(timezone.utc)
+        version_number=1,
+        version_hash=file_hash,
+        size_bytes=len(file_content),
+        storage_path=f"{doc.id}/1",
+        mime_type="text/plain",
+        created_by="test_fixture"
     )
     db_session.add(version)
-    db_session.flush()
     
-    # Create some test chunks
-    chunks = [
-        DocumentChunk(
-            id=str(uuid4()),
-            document_id=doc.id,
-            version_id=version.id,
-            chunk_index=i,
-            chunk_type=ChunkType.PARAGRAPH,
-            text=f"Test chunk {i}",
-            embedding=[0.1] * 384,  # Mock embedding
-            metadata={"page": i + 1}
-        )
-        for i in range(3)
-    ]
-    db_session.add_all(chunks)
+    # Update document's current version
+    doc.current_version_id = version.id
+    db_session.add(doc)
     db_session.commit()
+    db_session.refresh(doc)
+    db_session.refresh(version)
     
-    # Create the document in the storage service
-    doc_path = storage_service.documents_dir / doc.id
+    # Create the document file in the test storage directory
+    doc_path = storage_service.storage_path / str(doc.id)
     doc_path.mkdir(parents=True, exist_ok=True)
-    (doc_path / "v1").mkdir()
+    version_path = doc_path / str(version.version_number)
+    version_path.mkdir(exist_ok=True)
+    with open(version_path / "content.bin", "wb") as f:
+        f.write(file_content)
     
     return doc

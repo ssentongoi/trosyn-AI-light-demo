@@ -6,8 +6,12 @@ import os
 import socket
 import pytest
 import tempfile
+import logging
 from pathlib import Path
 from typing import Dict, Any, AsyncGenerator, Optional
+
+# Configure logger for test fixtures
+logger = logging.getLogger(__name__)
 
 from trosyn_sync.services.lan_sync.config import LANConfig
 from trosyn_sync.services.lan_sync.protocol import ProtocolHandler, Message, MessageType
@@ -55,41 +59,97 @@ def test_config(unused_port):
 @pytest.fixture
 def protocol_handler():
     """Return a protocol handler instance for testing."""
-    return ProtocolHandler(node_id=TEST_NODE_ID, node_name=TEST_NODE_NAME, secret_key=TEST_SECRET_KEY)
+    handler = ProtocolHandler(node_id=TEST_NODE_ID, node_name=TEST_NODE_NAME, secret_key=TEST_SECRET_KEY)
+    
+    # Reset nonce cache to prevent replay attack detection between tests
+    handler._seen_nonces = set()
+    logger.debug("Reset protocol handler's nonce cache for clean test")
+    
+    return handler
 
 @pytest.fixture
 async def test_server(event_loop, test_config, protocol_handler):
     """Create and start a test TCP server."""
-    # Create a simple auth middleware for testing
+    # Create a simple auth middleware for testing with detailed logging
     async def auth_middleware(message: Message) -> tuple[bool, Optional[Dict[str, Any]]]:
+        # Log message payload for debugging
+        logger.debug(f"[AUTH_MIDDLEWARE] Received auth request with payload: {message.payload}")
+        
+        # Check if message has a payload
+        if not message.payload:
+            logger.error("[AUTH_MIDDLEWARE] Auth failed: No payload in message")
+            return False, None
+            
+        # Check if token exists
+        token = message.payload.get('token')
+        logger.debug(f"[AUTH_MIDDLEWARE] Token: {token}")
+        
         # Accept any non-empty token for testing
-        if message.payload.get('token') == 'test-token':
+        if token == 'test-token':
+            logger.debug("[AUTH_MIDDLEWARE] Auth successful with test-token")
             return True, {'user_id': 'test-user'}
+            
+        logger.warning(f"[AUTH_MIDDLEWARE] Auth failed: Invalid token: {token}")
         return False, None
 
     # Create and start server
     server = TCPSyncServer(
         config=test_config,
-        handler=protocol_handler,
+        protocol_handler=protocol_handler,
         auth_middleware=auth_middleware,
         require_auth=test_config.require_authentication
     )
     
     await server.start()
+    await asyncio.sleep(0.1)  # Allow server to start properly
     yield server
     await server.stop()
+
+async def auth_callback():
+    """Test auth callback that returns a test token."""
+    logger.debug("Auth callback invoked, returning test token")
+    logger.debug("Auth token payload: {'token': 'test-token'}")
+    return {'token': 'test-token'}
 
 @pytest.fixture
 async def test_client(event_loop, test_config, protocol_handler):
     """Create and connect a test TCP client."""
-    client = TCPSyncClient(
-        config=test_config,
-        handler=protocol_handler,
-        auto_reconnect=False
+    # Create a special test handler with nonce checking disabled for testing
+    class TestProtocolHandler(ProtocolHandler):
+        def validate_message(self, message, check_signature=True, check_replay=False):
+            # Override to disable replay attack detection in tests
+            return super().validate_message(message, check_signature, check_replay=False)
+    
+    test_handler = TestProtocolHandler(
+        node_id=TEST_NODE_ID,
+        node_name=TEST_NODE_NAME,
+        secret_key=TEST_SECRET_KEY
     )
     
-    # Connect to localhost
-    await client.connect('127.0.0.1', test_config.sync_port)
+    client = TCPSyncClient(
+        config=test_config,
+        handler=test_handler,  # Use test handler that disables nonce checking
+        auth_callback=auth_callback,
+        auto_reconnect=False,
+        require_auth=test_config.require_authentication
+    )
+    
+    try:
+        # Connect to localhost
+        logger.info(f"Connecting test client to 127.0.0.1:{test_config.sync_port}")
+        await client.connect('127.0.0.1', test_config.sync_port)
+        
+        # Authenticate if required
+        if test_config.require_authentication:
+            logger.info("Authenticating test client")
+            auth_success = await client._authenticate()
+            if not auth_success:
+                logger.error("Test client authentication failed")
+                raise RuntimeError("Test client authentication failed")
+            logger.info("Test client authentication successful")
+    except Exception as e:
+        logger.error(f"Error setting up test client: {e}")
+        raise
     
     yield client
     

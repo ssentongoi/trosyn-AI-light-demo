@@ -11,25 +11,167 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from fastapi.responses import FileResponse, JSONResponse, Response
 from sqlalchemy.orm import Session
 
-from ...core.auth import get_auth_service, TokenData
+from ...core.auth import get_current_user, TokenData
 from ...db import get_db
 from ...models.document import Document, DocumentVersion, DocumentSyncStatus
 from ...models.node import Node, SyncQueue
 from ...services.storage import storage_service
 from ...services.sync_engine import SyncEngine
+from ...schemas.document import DocumentCreate, DocumentUpdate, DocumentResponse, DocumentVersionResponse
 
-router = APIRouter(prefix="/api/v1/sync/documents", tags=["documents"])
+router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 logger = logging.getLogger(__name__)
 
 # Dependency to get the current node ID
+@router.post("/", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
+def create_document(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
+):
+    """Upload a new document."""
+    try:
+        if not current_user or not current_user.node_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not identify the node from the provided token."
+            )
+
+        node = db.query(Node).filter(Node.node_id == current_user.node_id).first()
+        if not node:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Owner node with ID '{current_user.node_id}' not found."
+            )
+
+        doc, _ = storage_service.store_document(
+            db,
+            file.file,
+            file.filename,
+            file.content_type,
+            owner_node_id=node.id,
+            created_by=current_user.node_id
+        )
+        return doc
+    except Exception as e:
+        logger.error(f"Error creating document: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not create document"
+        )
+
 def get_current_node_id() -> str:
     """Get the current node ID from environment or configuration."""
     return os.getenv("NODE_ID", "local-node")
 
+@router.get("/", response_model=List[DocumentResponse])
+def list_documents(
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
+):
+    """List all documents."""
+    return db.query(Document).filter(Document.is_deleted == False).all()
+
+@router.get("/{document_id}", response_model=DocumentResponse)
+def get_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
+):
+    """Get a single document."""
+    doc = db.get(Document, document_id)
+    if not doc or doc.is_deleted:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return doc
+
+@router.get("/{document_id}/download")
+def download_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
+):
+    """Download the current version of a document."""
+    doc = db.get(Document, document_id)
+    if not doc or doc.is_deleted:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    try:
+        file_path, mime_type = storage_service.get_document_file(db, document_id=doc.id)
+    except (ValueError, FileNotFoundError) as e:
+        logger.error(f"Could not retrieve file for document {document_id}: {e}")
+        raise HTTPException(status_code=404, detail="Document file not found")
+        
+    return FileResponse(path=file_path, filename=doc.title, media_type=mime_type)
+
+@router.put("/{document_id}", response_model=DocumentResponse)
+def update_document(
+    document_id: int,
+    update_data: DocumentUpdate,
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
+):
+    """Update a document's metadata."""
+    doc = db.get(Document, document_id)
+    if not doc or doc.is_deleted:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    update_data_dict = update_data.model_dump(exclude_unset=True)
+    for key, value in update_data_dict.items():
+        setattr(doc, key, value)
+        
+    db.commit()
+    db.refresh(doc)
+    return doc
+
+@router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
+):
+    """Soft-delete a document."""
+    doc = db.get(Document, document_id)
+    if not doc or doc.is_deleted:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    doc.is_deleted = True
+    doc.deleted_at = datetime.utcnow()
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+@router.post("/{document_id}/restore", response_model=DocumentResponse)
+def restore_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
+):
+    """Restore a soft-deleted document."""
+    doc = db.get(Document, document_id)
+    if not doc or not doc.is_deleted:
+        raise HTTPException(status_code=404, detail="Document not found or not deleted")
+        
+    doc.is_deleted = False
+    doc.deleted_at = None
+    db.commit()
+    db.refresh(doc)
+    return doc
+
+@router.get("/{document_id}/versions", response_model=List[DocumentVersionResponse])
+def get_document_versions(
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user)
+):
+    """Get all versions of a document."""
+    doc = db.get(Document, document_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return doc.versions
+
 @router.get("/manifest", response_model=Dict[str, Any])
 async def get_document_manifest(
     db: Session = Depends(get_db),
-    current_user: TokenData = Depends(get_auth_service().verify_token)
+    current_user: TokenData = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """
     Get a manifest of all documents on this node.
@@ -68,7 +210,7 @@ async def get_document_version(
     document_id: str,
     version_id: str,
     db: Session = Depends(get_db),
-    current_user: TokenData = Depends(get_auth_service().verify_token)
+    current_user: TokenData = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """
     Get metadata for a specific document version.
@@ -77,7 +219,7 @@ async def get_document_version(
     without returning the actual file content.
     """
     try:
-        doc = db.query(Document).get(document_id)
+        doc = db.get(Document, document_id)
         if not doc or doc.is_deleted:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -120,7 +262,7 @@ async def download_document_version(
     document_id: str,
     version_id: str,
     db: Session = Depends(get_db),
-    current_user: TokenData = Depends(get_auth_service().verify_token)
+    current_user: TokenData = Depends(get_current_user)
 ) -> FileResponse:
     """
     Download a specific version of a document.
@@ -129,7 +271,7 @@ async def download_document_version(
     of a document.
     """
     try:
-        doc = db.query(Document).get(document_id)
+        doc = db.get(Document, document_id)
         if not doc or doc.is_deleted:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -178,7 +320,7 @@ async def upload_document(
     mime_type: str = Query(..., description="MIME type of the file"),
     metadata: str = Query("{}", description="JSON string of document metadata"),
     db: Session = Depends(get_db),
-    current_user: TokenData = Depends(get_auth_service().verify_token)
+    current_user: TokenData = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """
     Upload a new document or document version.
@@ -193,7 +335,22 @@ async def upload_document(
             metadata_dict = {}
         
         # Check if this is a new document or an update
-        doc = db.query(Document).get(document_id)
+        doc = db.get(Document, document_id)
+        
+        # Determine owner node
+        owner_node_str_id = owner_id if owner_id else current_user.node_id
+        if not owner_node_str_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Document owner ID must be provided either in the token or as a query parameter."
+            )
+
+        owner_node = db.query(Node).filter(Node.node_id == owner_node_str_id).first()
+        if not owner_node:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Owner node with ID '{owner_node_str_id}' not found."
+            )
         
         # Save the uploaded file to a temporary location
         temp_file = Path(f"storage/tmp/upload_{document_id}_{version_id}")
@@ -235,6 +392,7 @@ async def upload_document(
                         f,
                         title,
                         mime_type,
+                        owner_node_id=owner_node.id,
                         metadata=metadata_dict,
                         created_by=f"sync:{current_user.node_id}"
                     )
@@ -273,14 +431,14 @@ async def sync_document(
     document_id: str,
     target_node_id: str = Query(..., description="ID of the node to sync with"),
     db: Session = Depends(get_db),
-    current_user: TokenData = Depends(get_auth_service().verify_token)
+    current_user: TokenData = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """
     Initiate synchronization of a specific document with another node.
     """
     try:
         # Get the document
-        doc = db.query(Document).get(document_id)
+        doc = db.get(Document, document_id)
         if not doc or doc.is_deleted:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

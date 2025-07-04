@@ -3,15 +3,20 @@ Authentication and Authorization Service for Trosyn Sync.
 
 This module handles JWT token generation/validation and API key management.
 """
+import logging
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 from pydantic import BaseModel, ConfigDict
 from pydantic_settings import BaseSettings
+
+logger = logging.getLogger(__name__)
 
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -346,3 +351,29 @@ auth_service = AuthService()
 def get_auth_service() -> AuthService:
     """Dependency for FastAPI to get the auth service."""
     return auth_service
+
+
+# Security scheme for JWT tokens in headers
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
+
+
+def get_current_user(
+    token: str = Depends(oauth2_scheme), auth_service: AuthService = Depends(get_auth_service)
+) -> TokenData:
+    """
+    Dependency to get the current user from a token in the Authorization header.
+    Verifies the token and returns the user data.
+    """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    # Use the injected auth_service instance
+    token_data = auth_service.verify_token(token=token, token_type="access")
+
+    if token_data is None:
+        raise credentials_exception
+
+    return token_data

@@ -10,8 +10,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker, scoped_session, Session as DBSession
 
 # Import all models to ensure they are registered with SQLAlchemy
-from ..models import Base, get_db
-from ..models.auth import RefreshToken, AuthAuditLog
+from ..models import Base
 
 # Create engine and session factory
 engine = create_engine("sqlite:///trosyn_sync.db")
@@ -38,13 +37,13 @@ def reset_db() -> None:
     Base.metadata.create_all(bind=engine)
     logger.info("Database reset complete")
 
-def get_session() -> DBSession:
-    """Get a new database session."""
-    session = SessionLocal()
+def get_db() -> Generator[DBSession, None, None]:
+    """FastAPI dependency to get a database session."""
+    db = SessionLocal()
     try:
-        yield session
+        yield db
     finally:
-        session.close()
+        SessionLocal.remove()
 
 # Enable foreign key support for SQLite
 @event.listens_for(Engine, "connect")

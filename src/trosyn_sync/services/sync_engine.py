@@ -4,12 +4,15 @@ Document synchronization engine for Trosyn Sync.
 Handles the core logic for synchronizing documents between nodes.
 """
 import asyncio
+import contextlib
 import hashlib
 import json
 import logging
+import uuid
 from datetime import datetime, timedelta
+from io import BytesIO
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple, Any
+from typing import AsyncGenerator, BinaryIO, Dict, List, Optional, Set, Tuple, Any, Union
 
 import httpx
 from sqlalchemy.orm import Session, joinedload
@@ -21,24 +24,62 @@ from ..core.discovery import DiscoveryService
 
 logger = logging.getLogger(__name__)
 
+# Timeouts in seconds
+HTTP_REQUEST_TIMEOUT = 30.0
+SYNC_OPERATION_TIMEOUT = 300.0
+MAX_RETRIES = 3
+RETRY_DELAY = 5.0
+
+# File handling
+TEMP_DIR = Path("storage/tmp")
+TEMP_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@contextlib.asynccontextmanager
+async def temp_download_file(prefix: str = "doc") -> AsyncGenerator[Path, None]:
+    """Context manager for creating and cleaning up temporary download files.
+    
+    Args:
+        prefix: Prefix for the temporary filename
+        
+    Yields:
+        Path to the temporary file
+    """
+    temp_file = TEMP_DIR / f"{prefix}_{uuid.uuid4()}"
+    try:
+        temp_file.parent.mkdir(parents=True, exist_ok=True)
+        yield temp_file
+    finally:
+        try:
+            if temp_file.exists():
+                temp_file.unlink()
+        except OSError as e:
+            logger.warning(f"Failed to clean up temp file {temp_file}: {e}")
+
 
 class SyncEngine:
     """Handles document synchronization between nodes."""
     
-    def __init__(self, db: Session, node_id: str, discovery: Optional[DiscoveryService] = None):
+    def __init__(self, db: Session, node_id: str, discovery: Optional[DiscoveryService] = None, http_client: Optional[httpx.AsyncClient] = None):
         """Initialize the sync engine.
         
         Args:
             db: Database session
-            node_id: ID of the current node
+            node_id: The string ID of the current node
             discovery: Optional discovery service instance
         """
         self.db = db
-        self.node_id = node_id
+        self.node_id_str = node_id
         self.discovery = discovery
-        self._http_client = None
+        self._http_client = http_client
         self._sync_lock = asyncio.Lock()
         self._running = False
+
+        # Get the local node object from the database
+        self.local_node = db.query(Node).filter(Node.node_id == self.node_id_str).first()
+        if not self.local_node:
+            raise ValueError(f"SyncEngine initialization failed: Node '{self.node_id_str}' not found in the database.")
+        self.node_id = self.local_node.id # This is the integer PK
     
     @property
     def http_client(self) -> httpx.AsyncClient:
@@ -102,13 +143,26 @@ class SyncEngine:
                 actions = self._determine_sync_actions(local_manifest, remote_manifest)
                 
                 # Step 3: Execute sync actions
-                results = await self._execute_sync_actions(actions, remote_node.api_url)
+                results = await self._execute_sync_actions(actions, remote_node)
                 
-                # Update sync status
+                # Step 4: Check for errors and update status
+                if results["errors"]:
+                    error_summary = f"Sync completed with {len(results['errors'])} errors."
+                    sync_status.update_sync_status(self.db, 'error', error_summary)
+                    return {
+                        "status": "error",
+                        "message": error_summary,
+                        "node_id": remote_node_id,
+                        "actions_taken": len(actions),
+                        "results": results,
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+
+                # Update sync status to success if no errors
                 sync_status.update_sync_status(self.db, 'success')
                 
                 return {
-                    "status": "completed",
+                    "status": "success",
                     "node_id": remote_node_id,
                     "actions_taken": len(actions),
                     "results": results,
@@ -119,7 +173,13 @@ class SyncEngine:
                 error_msg = f"Failed to sync with node {remote_node_id}: {str(e)}"
                 logger.error(error_msg, exc_info=True)
                 sync_status.update_sync_status(self.db, 'error', error_msg)
-                raise
+                # Do not re-raise, return an error structure instead
+                return {
+                    "status": "error",
+                    "message": error_msg,
+                    "node_id": remote_node_id,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
     
     async def _generate_local_manifest(self) -> Dict[str, Any]:
         """Generate a manifest of local documents."""
@@ -228,7 +288,7 @@ class SyncEngine:
     async def _execute_sync_actions(
         self, 
         actions: List[Dict[str, Any]],
-        remote_base_url: str
+        remote_node: Node
     ) -> Dict[str, List[Dict[str, Any]]]:
         """Execute the determined sync actions."""
         results = {
@@ -243,7 +303,7 @@ class SyncEngine:
                     result = await self._push_document(
                         action["document_id"],
                         action["version_id"],
-                        remote_base_url
+                        remote_node.api_url
                     )
                     results["pushed"].append({
                         "document_id": action["document_id"],
@@ -252,9 +312,10 @@ class SyncEngine:
                     })
                 elif action["action"] == "pull":
                     result = await self._pull_document(
-                        action["document_id"],
-                        action["version_id"],
-                        remote_base_url
+                        action['document_id'],
+                        action['version_id'],
+                        remote_node.api_url,
+                        remote_node.id
                     )
                     results["pulled"].append({
                         "document_id": action["document_id"],
@@ -279,122 +340,142 @@ class SyncEngine:
         version_id: str,
         remote_base_url: str
     ) -> Dict[str, Any]:
-        """Push a document version to a remote node."""
-        # Get the document and version from the database
-        doc = self.db.query(Document).get(document_id)
-        if not doc or not doc.current_version:
-            raise ValueError(f"Document {document_id} not found or has no versions")
+        """Push a document version to a remote node.
         
-        version = next(
-            (v for v in doc.versions if str(v.id) == version_id),
-            None
-        )
-        if not version:
-            raise ValueError(f"Version {version_id} not found for document {document_id}")
-        
-        # Get the file content
-        file_path = Path(version.storage_path)
-        if not file_path.exists():
-            raise FileNotFoundError(f"File not found at {file_path}")
-        
-        # Prepare the file for upload
-        files = {
-            'file': (
-                f"{doc.id}_{version.id}{doc.file_extension or ''}",
-                file_path.open('rb'),
-                version.mime_type
-            )
-        }
-        
-        # Prepare metadata
-        metadata = {
-            'document_id': str(doc.id),
-            'version_id': str(version.id),
-            'version_hash': version.version_hash,
-            'title': doc.title,
-            'mime_type': version.mime_type,
-            'metadata': json.dumps(doc.metadata_ or {})
-        }
-        
+        Args:
+            document_id: ID of the document to push
+            version_id: ID of the version to push
+            remote_base_url: Base URL of the remote node
+            
+        Returns:
+            Dictionary containing push operation results
+            
+        Raises:
+            ValueError: If document or version is not found
+            FileNotFoundError: If document file is missing
+            httpx.HTTPStatusError: If the HTTP request fails
+        """
         try:
-            # Upload the file
-            async with self.http_client as client:
-                response = await client.post(
-                    f"{remote_base_url}/api/v1/sync/documents/upload",
-                    data=metadata,
-                    files=files
-                )
-                response.raise_for_status()
-                return response.json()
+            # Get the document and version from the database
+            doc = self.db.query(Document).get(document_id)
+            if not doc or not doc.current_version:
+                raise ValueError(f"Document {document_id} not found or has no versions")
+            
+            version = next(
+                (v for v in doc.versions if str(v.id) == version_id),
+                None
+            )
+            if not version:
+                raise ValueError(f"Version {version_id} not found for document {document_id}")
+            
+            # Get the file content
+            file_path = Path(version.storage_path)
+            if not file_path.exists():
+                raise FileNotFoundError(f"File not found at {file_path}")
+            
+            # Use a context manager to ensure the file is properly closed
+            with file_path.open('rb') as file_obj:
+                # Prepare the file for upload
+                files = {
+                    'file': (
+                        f"{doc.id}_{version.id}{doc.file_extension or ''}",
+                        file_obj,
+                        version.mime_type
+                    )
+                }
                 
-        finally:
-            # Make sure to close the file
-            if 'file' in files:
-                files['file'][1].close()
+                # Prepare metadata
+                metadata = {
+                    'document_id': str(doc.id),
+                    'version_id': str(version.id),
+                    'version_hash': version.version_hash,
+                    'title': doc.title,
+                    'mime_type': version.mime_type,
+                    'metadata': json.dumps(doc.metadata_ or {})
+                }
+                
+                # Upload the file
+                async with self.http_client as client:
+                    response = await client.post(
+                        f"{remote_base_url}/api/v1/sync/documents/upload",
+                        data=metadata,
+                        files=files,
+                        timeout=HTTP_REQUEST_TIMEOUT
+                    )
+                    response.raise_for_status()
+                    return response.json()
+                    
+        except Exception as e:
+            logger.error(
+                f"Failed to push document {document_id} version {version_id}: {str(e)}",
+                exc_info=True
+            )
+            raise
     
     async def _pull_document(
         self,
         document_id: str,
         version_id: str,
-        remote_base_url: str
+        remote_base_url: str,
+        remote_node_id: int
     ) -> Dict[str, Any]:
-        """Pull a document version from a remote node."""
+        """Pull a document version from a remote node.
+        
+        Args:
+            document_id: ID of the document to pull
+            version_id: ID of the version to pull
+            remote_base_url: Base URL of the remote node
+            remote_node_id: ID of the remote node in the local database
+            
+        Returns:
+            Dictionary containing pull operation results
+            
+        Raises:
+            httpx.HTTPStatusError: If the HTTP request fails
+        """
         # First, get document metadata
         metadata_url = f"{remote_base_url}/api/v1/sync/documents/{document_id}/versions/{version_id}"
         
         try:
             async with self.http_client as client:
                 # Get document metadata
-                metadata_response = await client.get(metadata_url)
+                metadata_response = await client.get(
+                    metadata_url,
+                    timeout=HTTP_REQUEST_TIMEOUT
+                )
                 metadata_response.raise_for_status()
                 metadata = metadata_response.json()
                 
-                # Download the file
-                download_url = f"{remote_base_url}/api/v1/sync/documents/{document_id}/versions/{version_id}/download"
-                async with client.stream('GET', download_url) as response:
-                    response.raise_for_status()
+                # Download the file using our temp file utility
+                async with temp_download_file(f"{document_id}_{version_id}") as temp_file:
+                    # Download the file content
+                    download_url = f"{remote_base_url}/api/v1/sync/documents/{document_id}/versions/{version_id}/download"
                     
-                    # Create a temporary file
-                    temp_file = Path(f"storage/tmp/{document_id}_{version_id}")
-                    temp_file.parent.mkdir(parents=True, exist_ok=True)
-                    
-                    # Stream the file to disk
-                    with temp_file.open('wb') as f:
-                        async for chunk in response.aiter_bytes():
-                            f.write(chunk)
-                    
-                    # Store the document
-                    with temp_file.open('rb') as f:
-                        # Check if document exists
-                        doc = Document.get_by_id(self.db, document_id)
-                        if doc:
-                            # Update existing document
-                            doc, version = storage_service.create_version(
-                                self.db,
-                                document_id,
-                                f,
-                                metadata["title"],
-                                metadata["mime_type"],
-                                created_by=f"sync:{self.node_id}"
-                            )
-                        else:
-                            # Create new document
-                            doc, version = storage_service.store_document(
-                                self.db,
-                                f,
-                                metadata["title"],
-                                metadata["mime_type"],
-                                metadata=metadata.get("metadata", {}),
-                                created_by=f"sync:{self.node_id}"
-                            )
+                    async with client.stream(
+                        'GET',
+                        download_url,
+                        timeout=SYNC_OPERATION_TIMEOUT
+                    ) as response:
+                        response.raise_for_status()
                         
-                        return {
-                            "document_id": str(doc.id),
-                            "version_id": str(version.id),
-                            "version_hash": version.version_hash,
-                            "status": "pulled"
-                        }
+                        # Stream the file to disk
+                        with temp_file.open('wb') as f:
+                            async for chunk in response.aiter_bytes():
+                                f.write(chunk)
+                    
+                    # Store the document using our helper method
+                    with temp_file.open('rb') as f:
+                        return await self._store_document_version(
+                            document_id=document_id,
+                            version_id=version_id,
+                            file_obj=f,
+                            metadata=metadata,
+                            remote_node_id=remote_node_id
+                        )
                         
         except Exception as e:
-            logger.error(f"Failed to pull document {document_id} version {version_id}: {e}")
+            logger.error(
+                f"Failed to pull document {document_id} version {version_id}: {str(e)}",
+                exc_info=True
+            )
             raise

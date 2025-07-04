@@ -11,7 +11,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from .core.discovery import DiscoveryService, get_discovery_service
+from .middleware.security import setup_security_middleware
+
+from .core.discovery import initialize_discovery_service, get_discovery_service
 from .db import init_db, get_db
 from .api.endpoints import sync, documents, memory, processing, auth
 
@@ -34,20 +36,19 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Initializing database...")
     init_db()
-    
-    # Initialize discovery service
-    global discovery_service
-    discovery_service = DiscoveryService(
+
+    logger.info("Initializing discovery service...")
+    discovery_service = initialize_discovery_service(
         node_type=os.getenv("NODE_TYPE", "TROSYSN_DEPT_NODE"),
         port=int(os.getenv("NODE_PORT", "8000")),
     )
     await discovery_service.start()
-    
+
     yield
-    
+
     # Shutdown
-    if discovery_service:
-        await discovery_service.stop()
+    logger.info("Stopping discovery service...")
+    await get_discovery_service().stop()
     logger.info("Application shutdown complete")
 
 # Create FastAPI app
@@ -67,6 +68,9 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["Content-Disposition"],  # For file downloads
 )
+
+# Add security middleware (headers, rate limiting, etc.)
+setup_security_middleware(app)
 
 # Include API routers
 app.include_router(auth.router)  # Auth endpoints first
@@ -94,7 +98,4 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"detail": "Internal server error"}
     )
 
-# Dependency for getting the discovery service
-def get_discovery_service() -> DiscoveryService:
-    """Get the discovery service instance."""
-    return discovery_service
+

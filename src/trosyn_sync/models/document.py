@@ -2,16 +2,26 @@
 Document and version models for the sync service.
 """
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, TYPE_CHECKING
 from sqlalchemy import Column, String, Text, Integer, ForeignKey, DateTime, Boolean, JSON
 from sqlalchemy.orm import relationship, Session, Mapped, mapped_column
 from sqlalchemy.sql import func
 from pydantic import ConfigDict
 from .base import Base, BaseMixin
 
+if TYPE_CHECKING:
+    from .node import Node
+
 class Document(Base, BaseMixin):
     """Represents a document in the system."""
     __tablename__ = "document"
+
+    owner_node_id: Mapped[int] = mapped_column(
+        Integer, 
+        ForeignKey('node.id'), 
+        nullable=False, 
+        index=True
+    )
     
     # Define columns with type annotations for SQLAlchemy 2.0
     title: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
@@ -32,21 +42,26 @@ class Document(Base, BaseMixin):
     )  # Custom metadata as JSON
     
     # Relationships
+    owner: Mapped["Node"] = relationship("Node", back_populates="documents")
     versions: Mapped[List["DocumentVersion"]] = relationship(
         "DocumentVersion", 
         back_populates="document", 
         order_by="desc(DocumentVersion.version_number)",
         foreign_keys="DocumentVersion.document_id",
-        cascade="all, delete-orphan",
-        overlaps="current_version"
+        cascade="all, delete-orphan"
     )
     current_version: Mapped[Optional["DocumentVersion"]] = relationship(
         "DocumentVersion", 
         foreign_keys=[current_version_id],
         remote_side="DocumentVersion.id",
         post_update=True,
-        viewonly=True,
-        overlaps="versions"
+        viewonly=True
+    )
+    lock: Mapped[Optional["DocumentLock"]] = relationship(
+        "DocumentLock",
+        back_populates="document",
+        uselist=False,
+        cascade="all, delete-orphan"
     )
     
     # Pydantic v2 config
@@ -94,8 +109,7 @@ class DocumentVersion(Base, BaseMixin):
     document: Mapped["Document"] = relationship(
         "Document", 
         back_populates="versions",
-        foreign_keys=[document_id],
-        overlaps="current_version"
+        foreign_keys=[document_id]
     )
     
     # Table arguments
@@ -122,18 +136,90 @@ class DocumentVersion(Base, BaseMixin):
         return db.query(cls).filter(cls.version_hash == doc_hash).first()
 
 
+class DocumentLock(Base, BaseMixin):
+    """Tracks document locks for concurrent editing."""
+    __tablename__ = "documentlock"
+    
+    document_id: Mapped[int] = mapped_column(
+        Integer, 
+        ForeignKey('document.id'), 
+        nullable=False, 
+        index=True,
+        unique=True
+    )
+    locked_by: Mapped[str] = mapped_column(String(255), nullable=False)  # node_id or user_id
+    locked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    lock_token: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    
+    # Relationships
+    document: Mapped["Document"] = relationship("Document", back_populates="lock")
+    
+    __table_args__ = (
+        {'sqlite_autoincrement': True},
+    )
+    
+    model_config = ConfigDict(from_attributes=True)
+    
+    @classmethod
+    def acquire(
+        cls,
+        db: Session,
+        document_id: int,
+        locked_by: str,
+        lock_duration_minutes: int = 30
+    ) -> 'DocumentLock':
+        """Acquire a lock on a document."""
+        from datetime import datetime, timedelta
+        import secrets
+        
+        # Check for existing lock
+        existing = db.query(cls).filter(cls.document_id == document_id).first()
+        now = datetime.utcnow()
+        
+        if existing:
+            # If lock is expired, remove it
+            if existing.expires_at < now:
+                db.delete(existing)
+                db.commit()
+            else:
+                raise ValueError("Document is already locked")
+        
+        # Create new lock
+        expires_at = now + timedelta(minutes=lock_duration_minutes)
+        lock = cls(
+            document_id=document_id,
+            locked_by=locked_by,
+            expires_at=expires_at,
+            lock_token=secrets.token_hex(32)
+        )
+        db.add(lock)
+        db.commit()
+        db.refresh(lock)
+        return lock
+    
+    def release(self, db: Session) -> None:
+        """Release this lock."""
+        db.delete(self)
+        db.commit()
+    
+    def is_valid(self) -> bool:
+        """Check if the lock is still valid."""
+        from datetime import datetime
+        return datetime.utcnow() < self.expires_at
+
+
 class DocumentSyncStatus(Base, BaseMixin):
     """Tracks sync status of documents across nodes."""
     __tablename__ = "documentsyncstatus"
     
-    # Define columns with type annotations for SQLAlchemy 2.0
     document_id: Mapped[int] = mapped_column(
         Integer, 
         ForeignKey('document.id'), 
         nullable=False, 
         index=True
     )
-    node_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)  # ID of the node
+    node_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     version_id: Mapped[Optional[int]] = mapped_column(
         Integer, 
         ForeignKey('documentversion.id'), 
@@ -147,12 +233,10 @@ class DocumentSyncStatus(Base, BaseMixin):
     )
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
-    # Table arguments
     __table_args__ = (
         {'sqlite_autoincrement': True},
     )
     
-    # Pydantic v2 config
     model_config = ConfigDict(from_attributes=True)
     
     @classmethod
@@ -163,23 +247,19 @@ class DocumentSyncStatus(Base, BaseMixin):
         node_id: str
     ) -> 'DocumentSyncStatus':
         """Get or create a sync status for a document and node."""
-        status = (
-            db.query(cls)
-            .filter(
-                cls.document_id == document_id,
-                cls.node_id == node_id
-            )
-            .first()
-        )
+        instance = db.query(cls).filter(
+            cls.document_id == document_id,
+            cls.node_id == node_id
+        ).first()
         
-        if not status:
-            status = cls(
+        if not instance:
+            instance = cls(
                 document_id=document_id,
                 node_id=node_id,
                 sync_status='pending'
             )
-            db.add(status)
+            db.add(instance)
             db.commit()
-            db.refresh(status)
+            db.refresh(instance)
             
-        return status
+        return instance

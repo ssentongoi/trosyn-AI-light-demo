@@ -99,3 +99,13 @@ tasks/archive/
 !.gitkeep
 node_modules
 models/
+
+# Database files
+trosyn_sync.db*
+*.db
+*.db-shm
+*.db-wal
+
+# Local development data
+/data/
+/storage/

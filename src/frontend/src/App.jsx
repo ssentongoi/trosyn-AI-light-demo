@@ -7,6 +7,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import SuperadminDashboard from './pages/SuperadminDashboard';
+import AdminDashboard from './pages/AdminDashboard';
 import CompanyHub from './pages/CompanyHub';
 import LicensingSync from './pages/LicensingSync';
 import MemoryManagement from './pages/MemoryManagement';
@@ -67,6 +68,11 @@ function App() {
           <Route path="superadmin" element={
             <ProtectedRoute requiredRole="superadmin">
               <SuperadminDashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="admin" element={
+            <ProtectedRoute requiredRole="admin">
+              <AdminDashboard />
             </ProtectedRoute>
           } />
           <Route path="company-hub" element={

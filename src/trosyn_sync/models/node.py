@@ -9,6 +9,9 @@ from sqlalchemy.sql import func
 from pydantic import ConfigDict
 from .base import Base, BaseMixin
 
+if TYPE_CHECKING:
+    from .document import Document
+
 
 class Node(Base, BaseMixin):
     """Represents a node in the sync network."""
@@ -43,8 +46,15 @@ class Node(Base, BaseMixin):
     # Relationships
     sync_statuses: Mapped[List["NodeSyncStatus"]] = relationship(
         "NodeSyncStatus", 
-        back_populates="node"
+        back_populates="node",
+        cascade="all, delete-orphan"
     )
+    sync_logs: Mapped[List["NodeSyncLog"]] = relationship(
+        "NodeSyncLog", 
+        back_populates="node",
+        cascade="all, delete-orphan"
+    )
+    documents: Mapped[List["Document"]] = relationship("Document", back_populates="owner", cascade="all, delete-orphan")
     
     # Pydantic v2 config
     model_config = ConfigDict(from_attributes=True)
@@ -119,7 +129,10 @@ class NodeSyncStatus(Base, BaseMixin):
         node_id: int, 
         remote_node_id: str
     ) -> 'NodeSyncStatus':
-        """Get or create a sync status for a node pair."""
+        """Get or create a sync status for a node pair.
+        
+        This method will also create the remote node if it doesn't exist.
+        """
         status = (
             db.query(cls)
             .filter(
@@ -129,17 +142,34 @@ class NodeSyncStatus(Base, BaseMixin):
             .first()
         )
         
-        if not status:
-            status = cls(
-                node_id=node_id,
-                remote_node_id=remote_node_id,
-                sync_status='idle'
+        if status:
+            return status
+
+        # If status doesn't exist, ensure the remote node does before creating status.
+        remote_node = db.query(Node).filter(Node.node_id == remote_node_id).first()
+        if not remote_node:
+            # This is the fallback that was causing issues.
+            # By checking first, we avoid the UNIQUE constraint violation.
+            remote_node = Node(
+                node_id=remote_node_id,
+                node_type='TROSYSN_DEPT_NODE',  # Assume dept node if unknown
+                hostname='unknown',
+                ip_address='0.0.0.0',
+                port=0,
+                is_trusted=False,  # Untrusted by default
             )
-            db.add(status)
-            db.commit()
-            db.refresh(status)
-            
-        return status
+            db.add(remote_node)
+
+        # Now create the new status object.
+        new_status = cls(
+            node_id=node_id,
+            remote_node_id=remote_node_id,
+            sync_status='idle'
+        )
+        db.add(new_status)
+        db.flush()  # Use flush to make the object available in the session
+        
+        return new_status
     
     def update_sync_status(
         self, 
@@ -235,19 +265,138 @@ class SyncQueue(Base, BaseMixin):
     def mark_started(self, db: Session) -> None:
         """Mark the sync as started."""
         self.status = 'in_progress'
-        self.started_at = func.now()
-        self.retry_count += 1
+        self.started_at = datetime.utcnow()
         db.commit()
     
     def mark_completed(self, db: Session) -> None:
         """Mark the sync as completed successfully."""
         self.status = 'completed'
-        self.completed_at = func.now()
+        self.completed_at = datetime.utcnow()
         db.commit()
     
     def mark_failed(self, db: Session, error: str) -> None:
         """Mark the sync as failed."""
-        self.status = 'failed' if self.retry_count >= 3 else 'pending'
+        self.status = 'failed'
         self.error_message = error
-        self.completed_at = func.now()
+        self.retry_count += 1
+        self.completed_at = datetime.utcnow()
         db.commit()
+
+
+class NodeSyncLog(Base, BaseMixin):
+    """Log of sync operations between nodes."""
+    __tablename__ = 'nodesynclog'
+    
+    node_id: Mapped[int] = mapped_column(
+        Integer, 
+        ForeignKey('node.id'), 
+        nullable=False, 
+        index=True
+    )
+    remote_node_id: Mapped[str] = mapped_column(
+        String(64), 
+        nullable=False, 
+        index=True
+    )
+    sync_type: Mapped[str] = mapped_column(
+        String(20), 
+        nullable=False  # push, pull, bidirectional
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), 
+        nullable=False  # started, completed, failed
+    )
+    document_count: Mapped[Optional[int]] = mapped_column(
+        Integer, 
+        nullable=True
+    )
+    bytes_transferred: Mapped[Optional[int]] = mapped_column(
+        Integer, 
+        nullable=True
+    )
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), 
+        server_default=func.now()
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), 
+        nullable=True
+    )
+    
+    __table_args__ = (
+        {'sqlite_autoincrement': True},
+    )
+    
+    model_config = ConfigDict(from_attributes=True)
+    
+    # Relationship
+    node: Mapped["Node"] = relationship("Node", back_populates="sync_logs")
+    
+    @classmethod
+    def log_sync_start(
+        cls,
+        db: Session,
+        node_id: int,
+        remote_node_id: str,
+        sync_type: str
+    ) -> 'NodeSyncLog':
+        """Log the start of a sync operation."""
+        log = cls(
+            node_id=node_id,
+            remote_node_id=remote_node_id,
+            sync_type=sync_type,
+            status='started'
+        )
+        db.add(log)
+        db.commit()
+        db.refresh(log)
+        return log
+    
+    def log_completion(
+        self,
+        db: Session,
+        document_count: Optional[int] = None,
+        bytes_transferred: Optional[int] = None
+    ) -> None:
+        """Log the successful completion of a sync operation."""
+        self.status = 'completed'
+        self.document_count = document_count
+        self.bytes_transferred = bytes_transferred
+        self.completed_at = datetime.utcnow()
+        db.commit()
+    
+    def log_failure(
+        self,
+        db: Session,
+        error_message: str,
+        document_count: Optional[int] = None,
+        bytes_transferred: Optional[int] = None
+    ) -> None:
+        """Log a failed sync operation."""
+        self.status = 'failed'
+        self.error_message = error_message
+        self.document_count = document_count
+        self.bytes_transferred = bytes_transferred
+        self.completed_at = datetime.utcnow()
+        db.commit()
+    
+    @classmethod
+    def get_recent_logs(
+        cls,
+        db: Session,
+        node_id: Optional[int] = None,
+        limit: int = 100
+    ) -> List['NodeSyncLog']:
+        """Get recent sync logs, optionally filtered by node."""
+        query = db.query(cls)
+        
+        if node_id is not None:
+            query = query.filter(cls.node_id == node_id)
+            
+        return (
+            query
+            .order_by(cls.started_at.desc())
+            .limit(limit)
+            .all()
+        )

@@ -12,11 +12,7 @@ from pydantic import BaseModel, ConfigDict
 # Type variable for model instances
 ModelType = TypeVar("ModelType", bound="Base")
 
-# Create SQLAlchemy engine and session factory
-engine = create_engine("sqlite:///trosyn_sync.db")
-SessionLocal = scoped_session(
-    sessionmaker(autocommit=False, autoflush=False, bind=engine)
-)
+
 
 class Base(DeclarativeBase):
     """Base class for all SQLAlchemy models."""
@@ -89,10 +85,4 @@ class BaseMixin:
         }
 
 
-def get_db() -> DBSession:
-    """Dependency for getting database session."""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+

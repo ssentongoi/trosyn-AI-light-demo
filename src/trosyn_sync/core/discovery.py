@@ -100,6 +100,10 @@ class DiscoveryService:
         
         logger.info("Discovery service stopped")
 
+    def get_node(self, node_id: str) -> Optional[NodeInfo]:
+        """Get information about a specific discovered node."""
+        return self.nodes.get(node_id)
+
     async def _announce_loop(self):
         """Periodically announce this node's presence on the network."""
         while self._running:
@@ -189,3 +193,23 @@ class DiscoveryProtocol(asyncio.DatagramProtocol):
         logger.info("Discovery connection closed")
         if exc:
             logger.error(f"Discovery connection lost: {exc}")
+
+
+discovery_service_instance: Optional[DiscoveryService] = None
+
+def initialize_discovery_service(node_type: str, port: int, on_node_discovered: Optional[Callable[[NodeInfo], Awaitable[None]]] = None) -> DiscoveryService:
+    """Initialize the global discovery service instance."""
+    global discovery_service_instance
+    if discovery_service_instance is None:
+        discovery_service_instance = DiscoveryService(
+            node_type=node_type,
+            port=port,
+            on_node_discovered=on_node_discovered
+        )
+    return discovery_service_instance
+
+def get_discovery_service() -> DiscoveryService:
+    """Get the global discovery service instance."""
+    if discovery_service_instance is None:
+        raise RuntimeError("Discovery service has not been initialized.")
+    return discovery_service_instance

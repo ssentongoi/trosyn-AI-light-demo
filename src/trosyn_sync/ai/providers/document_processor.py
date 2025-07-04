@@ -99,9 +99,6 @@ class UnstructuredDocumentProcessor(DocumentProcessor):
         Split text into chunks of specified size with proper boundary handling.
         Strictly enforces chunk size limits while trying to break at natural boundaries.
         
-        For very small chunk sizes (<= 10), uses a simpler algorithm to ensure
-        strict size limits are maintained.
-        
         Args:
             text: The text to chunk
             chunk_size: Maximum characters per chunk
@@ -113,68 +110,77 @@ class UnstructuredDocumentProcessor(DocumentProcessor):
         if not text or not text.strip():
             return []
             
-        # For very small chunk sizes, use a simpler algorithm
-        if chunk_size <= 10:
+        # For very small chunk sizes, use optimized method
+        if chunk_size <= 500:
             return self._chunk_text_small(text, chunk_size)
-            
-        # Preserve original text exactly
-        text = text
+        
+        # Create exact copies of the input for verification
+        original_text = text
+        
+        # Character-based chunking with intelligent boundary detection
         chunks = []
         start = 0
         
         while start < len(text):
-            target_end = start + chunk_size
-            if target_end >= len(text):
-                chunk = text[start:]
-                if chunk.strip():
-                    chunks.append(chunk)
-                break
-
-            # Find the best possible break point by searching backwards from target_end.
-            # We search in a "window" from the end of the chunk (e.g., last 10%).
-            search_window_start = start + int(chunk_size * 0.9)
+            # Hard limit - never exceed chunk_size
+            end = min(start + chunk_size, len(text))
             
-            actual_end = target_end
-
-            # Priority 1: Paragraph break
-            pos = text.rfind('\n\n', search_window_start, target_end + 1)
-            if pos != -1:
-                actual_end = pos + 2
-            else:
-                # Priority 2: Sentence break
-                best_sent_pos = -1
-                sent_break_len = 0
-                # Note: The rstrip() logic is to handle cases like '. ' but only count the '.'
-                for punct in ['. ', '! ', '? ', '.\n', '!\n', '?\n']:
-                    pos = text.rfind(punct, search_window_start, target_end + 1)
-                    if pos > best_sent_pos:
-                        best_sent_pos = pos
-                        sent_break_len = len(punct.rstrip())
-                if best_sent_pos != -1:
-                    actual_end = best_sent_pos + sent_break_len
+            # Only try to find natural break points if not at the end of text and within the chunk_size limit
+            # CRITICAL: Always enforce chunk_size as a hard upper limit
+            if end < len(text):
+                # Calculate the maximum valid end position based on chunk_size
+                max_end = start + chunk_size
+                
+                # Look for paragraph breaks (most preferred)
+                paragraph_pos = text.rfind('\n\n', max(start, end - 50), min(end, max_end))
+                if paragraph_pos > start and (paragraph_pos + 2 - start) <= chunk_size:
+                    end = paragraph_pos + 2  # Include the paragraph break
                 else:
-                    # Priority 3: Word break (space)
-                    pos = text.rfind(' ', search_window_start, target_end + 1)
-                    if pos != -1:
-                        # Break after the space
-                        actual_end = pos + 1
-
-            # Ensure we always make progress
-            if actual_end <= start:
-                actual_end = min(start + chunk_size, len(text))
-
-            chunk = text[start:actual_end]
+                    # Try sentence breaks
+                    for punct in ['. ', '! ', '? ', '.\n', '!\n', '?\n']:
+                        pos = text.rfind(punct, max(start, end - 30), min(end, max_end))
+                        if pos > start and (pos + len(punct) - start) <= chunk_size:
+                            # Include the punctuation and space/newline
+                            end = pos + len(punct)
+                            break
+                    
+                    # If no sentence break found, try word breaks
+                    # BUT only if we're at the maximum chunk size (meaning no other breaks found)
+                    if end >= max_end:
+                        # Look for the last space that keeps us under the size limit
+                        space_pos = text.rfind(' ', max(start, end - 20), max_end)
+                        if space_pos > start and (space_pos + 1 - start) <= chunk_size:
+                            end = space_pos + 1  # Include the space
+                    
+                # Final check: ensure we never exceed chunk_size regardless of breaks
+                if end - start > chunk_size:
+                    end = start + chunk_size
+            
+            # Extract chunk and add if non-empty
+            chunk = text[start:end]
             if chunk.strip():
                 chunks.append(chunk)
             
-            start = actual_end
+            # Important: Always move forward even if we couldn't find a good break
+            start = end
         
-        # Verify we didn't lose any text
-        reconstructed = ''.join(chunks)
-        if reconstructed != text:
-            # If we lost text, fall back to simple chunking
-            if len(reconstructed) != len(text):
-                return [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
+        # Verify total content is preserved
+        reconstructed = "".join(chunks)
+        if reconstructed != original_text:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"Chunking lost content! Original length: {len(original_text)}, "
+                f"Reconstructed: {len(reconstructed)}"
+            )
+            
+            # Emergency fix: If we lost content, revert to simple character-level chunking
+            # This guarantees no content loss, though chunk boundaries may be suboptimal
+            chunks = [original_text[i:i + chunk_size] for i in range(0, len(original_text), chunk_size)]
+            
+            # Extra verification
+            if "".join(chunks) != original_text:
+                logger.error("Emergency chunking also failed to preserve content")
         
         return chunks
         

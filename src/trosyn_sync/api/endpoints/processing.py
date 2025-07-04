@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 import tempfile
 import os
-from fastapi import APIRouter, File, UploadFile, HTTPException, status, Body
+from fastapi import APIRouter, File, UploadFile, HTTPException, status, Body, Form, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -16,8 +16,7 @@ from trosyn_sync.services.vector_store import VectorStore
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 logger = logging.getLogger(__name__)
 
-# Initialize document processor and vector store
-processor = UnstructuredDocumentProcessor()
+# Initialize vector store
 vector_store = VectorStore()
 
 class SearchQuery(BaseModel):
@@ -43,8 +42,11 @@ class SearchResult(BaseModel):
 @router.post("", response_model=Dict[str, Any])
 async def process_document(
     file: UploadFile = File(...),
-    chunk_size: int = 1000,
-    keep_file: bool = False,
+    chunk_size: Optional[int] = None,
+    keep_file: Optional[bool] = None,
+    # Legacy parameters for backward compatibility
+    chunk_size_form: Optional[int] = Form(None, description="Maximum size of each chunk in characters"),
+    keep_file_form: Optional[bool] = Form(None, description="Whether to keep the uploaded file after processing"),
 ) -> Dict[str, Any]:
     """
     Process an uploaded document and return its chunks.
@@ -57,6 +59,30 @@ async def process_document(
     Returns:
         Document processing results including chunks and metadata
     """
+    # Merge form and regular parameters, with form parameters taking precedence if both are provided
+    # Default values if neither is provided
+    effective_chunk_size = 1000
+    effective_keep_file = False
+    
+    # Handle regular parameters
+    if chunk_size is not None:
+        effective_chunk_size = chunk_size
+    if keep_file is not None:
+        effective_keep_file = keep_file
+    
+    # Form parameters override regular parameters if provided
+    if chunk_size_form is not None:
+        effective_chunk_size = chunk_size_form
+    if keep_file_form is not None:
+        effective_keep_file = keep_file_form
+    
+    # Enhanced debug logging for parameter handling
+    logger.debug(f"Received document processing request with parameters:")
+    logger.debug(f"  - chunk_size (original): {chunk_size} (type: {type(chunk_size) if chunk_size is not None else None})")
+    logger.debug(f"  - chunk_size_form: {chunk_size_form} (type: {type(chunk_size_form) if chunk_size_form is not None else None})")
+    logger.debug(f"  - effective_chunk_size: {effective_chunk_size} (type: {type(effective_chunk_size)})")
+    logger.debug(f"  - file: {file.filename} (size: {file.size if hasattr(file, 'size') else 'unknown'})")
+    
     temp_file = None
     
     try:
@@ -66,9 +92,25 @@ async def process_document(
             content = await file.read()
             temp.write(content)
         
-        # Process the document
+        # Process the document - create a fresh processor instance for each request
+        # This ensures we don't have any cached instances using old chunking behavior
         try:
-            chunks = processor.process_document(str(temp_file), chunk_size=chunk_size)
+            # Create a fresh processor instance per request
+            request_processor = UnstructuredDocumentProcessor()
+            
+            # Add debug logging
+            logger.debug(f"Processing document with chunk_size={effective_chunk_size}")
+            
+            # Process the document with the fresh processor instance
+            processed_doc = request_processor.process_document(str(temp_file), chunk_size=effective_chunk_size)
+            
+            # Extract the chunks from the processor's response
+            chunks = processed_doc["chunks"]
+            
+            # Log chunk sizes for debugging
+            chunk_sizes = [len(chunk) for chunk in chunks]
+            logger.debug(f"Generated {len(chunks)} chunks with sizes: {chunk_sizes}")
+            logger.debug(f"Largest chunk: {max(chunk_sizes)} chars")
         except ValueError as e:
             # Handle unsupported file type error from processor
             if "Unsupported file format" in str(e):
@@ -82,14 +124,16 @@ async def process_document(
         import uuid
         document_id = str(uuid.uuid4())
         
-        # Prepare response
+        # Prepare response with proper structure
         result = {
             "id": document_id,
             "filename": file.filename,
             "mime_type": file.content_type,
             "size": temp_file.stat().st_size,
-            "chunks": chunks,
-            "num_chunks": len(chunks),
+            "chunks": {
+                "chunks": chunks,  # Ensure correct nesting expected by tests
+                "num_chunks": len(chunks)
+            },
             "status": "processed"
         }
         

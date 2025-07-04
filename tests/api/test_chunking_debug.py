@@ -62,7 +62,15 @@ def test_large_document_chunking_fixed():
     large_content = "This is a test sentence for chunking. " * 100  # ~3800 characters
     requested_chunk_size = 500
     
-    files = {"file": ("large.txt", large_content, "text/plain")}
+    # For multipart/form-data with FastAPI test client, both files and form fields need
+    # to be in the files dict when using Form parameters
+    files = {
+        "file": ("large.txt", large_content, "text/plain"),
+        # Send as both regular and form parameter to cover both cases
+        "chunk_size": (None, str(requested_chunk_size)),
+        "chunk_size_form": (None, str(requested_chunk_size))
+    }
+    # Also include as data to support query parameter mode
     data = {"chunk_size": requested_chunk_size}
     
     print(f"\nTesting large document chunking:")
