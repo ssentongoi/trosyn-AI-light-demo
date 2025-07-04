@@ -8,6 +8,7 @@ import json
 import logging
 import struct
 import ssl
+import time
 import uuid
 from typing import Dict, Optional, Callable, Awaitable, Any, List, Tuple
 
@@ -86,6 +87,7 @@ class TCPSyncClient:
         self.pending_requests: Dict[str, asyncio.Future] = {}
         self.connection_handlers: List[Callable[[bool], None]] = []
         self.auth_handlers: List[Callable[[bool], None]] = []
+        self._connected_event = asyncio.Event()
     
     async def connect(self, host: str, port: int) -> bool:
         """Connect to a remote TCP server with SSL/TLS.
@@ -95,7 +97,10 @@ class TCPSyncClient:
             port: Server port
             
         Returns:
-            bool: True if connection was successful, False otherwise
+            bool: True if connection and authentication (if required) were successful
+            
+        Raises:
+            ConnectionError: If connection or authentication fails
         """
         if self.connected:
             logger.warning("Already connected to a server")
@@ -109,20 +114,18 @@ class TCPSyncClient:
                     await self.reconnect_task
                 except asyncio.CancelledError:
                     pass
+                self.reconnect_task = None
             
             # Reset connection state
             await self._reset_connection()
             
-            # Create SSL context if not provided
-            if self.config.use_ssl and self.ssl_context is None:
-                logger.info("Creating secure SSL context for client")
-                self.ssl_context = security.get_ssl_context(
-                    server_side=False,
-                    verify_cert=os.getenv('TROSYNC_VERIFY_SSL', '').lower() not in ('0', 'false', 'no', 'off')
-                )
-                logger.debug(f"Configured SSL context with verify_mode={self.ssl_context.verify_mode}")
-            
-            protocol = "SSL/TLS" if self.config.use_ssl else "TCP (unencrypted)"
+            # Set up SSL context if needed
+            ssl_context = None
+            if self.config.use_ssl:
+                ssl_context = self.ssl_context
+                
+            # Log connection attempt
+            protocol = "SSL/TLS" if self.config.use_ssl else "plaintext"
             logger.info(f"Attempting to connect to {host}:{port} with {protocol}...")
 
             # Enable SSL debug logging
@@ -132,68 +135,53 @@ class TCPSyncClient:
                 logger.debug(f"  Verify mode: {self.ssl_context.verify_mode}")
                 logger.debug(f"  Check hostname: {self.ssl_context.check_hostname}")
             
-            # Enable SSL debug logging
-            logger.debug("Initiating connection...")
-            logger.debug(f"Target host: {host}:{port}")
-            logger.debug(f"SSL context: {self.ssl_context}")
-            
-            # Connect with timeout
+            # Create connection with timeout
             try:
-                conn_params = {'host': host, 'port': port}
-                if self.config.use_ssl:
-                    conn_params['ssl'] = self.ssl_context
-                    conn_params['server_hostname'] = host
-                    conn_params['ssl_handshake_timeout'] = 10.0
+                # Only include ssl_handshake_timeout if using SSL
+                connect_kwargs = {
+                    'host': host,
+                    'port': port,
+                    'ssl': ssl_context
+                }
+                if ssl_context:
+                    connect_kwargs['ssl_handshake_timeout'] = 10.0
+                
+                connect_coro = asyncio.open_connection(**connect_kwargs)
+                
+                # Use asyncio.wait_for to add a timeout to the entire connection process
+                self.reader, self.writer = await asyncio.wait_for(connect_coro, timeout=15.0)
+                
+                # Connection successful
+                self.connected = True
+                self.authenticated = False  # Reset authenticated state
+                
+                # Start background tasks
+                self.receive_task = asyncio.create_task(self._receive_messages())
+                self.receive_task.add_done_callback(self._handle_task_done)
+                
+                if self.auto_reconnect:
+                    self.heartbeat_task = asyncio.create_task(self._send_heartbeats())
+                    self.heartbeat_task.add_done_callback(self._handle_task_done)
+                
+                logger.info(f"Connected to {host}:{port}")
+                
+                # Notify connection handlers
+                self._notify_connection_handlers(True)
+                
+                # Start authentication if required
+                if self.require_auth:
+                    if not self.auth_callback:
+                        logger.error("Authentication required but no auth_callback provided")
+                        await self.disconnect()
+                        return False
+                return True
 
-                self.reader, self.writer = await asyncio.wait_for(
-                    asyncio.open_connection(**conn_params),
-                    timeout=10.0
-                )
-
-                # Log connection details
-                protocol = "SSL/TLS" if self.config.use_ssl else "TCP"
-                logger.info(f"{protocol} connection to {host}:{port} established successfully.")
-
-                if self.config.use_ssl:
-                    ssl_object = self.writer.get_extra_info('ssl_object')
-                    if ssl_object:
-                        try:
-                            cipher = ssl_object.cipher()
-                            if cipher:
-                                logger.info(f"SSL/TLS connection established: {cipher[0]} {cipher[1]} {cipher[2]}")
-                            peer_cert = ssl_object.getpeercert()
-                            if peer_cert:
-                                logger.debug(f"Server certificate: {peer_cert}")
-                        except Exception as e:
-                            logger.warning(f"Could not get SSL connection details: {e}")
-
-            except ssl.SSLError as e:
-                logger.error("SSL handshake failed with the following error:")
-                logger.error(f"Error type: {type(e).__name__}")
-                logger.error(f"Error message: {e}")
-                if hasattr(e, 'library_name') and hasattr(e, 'reason'):
-                    logger.error(f"SSL Library: {e.library_name}")
-                    logger.error(f"SSL Reason: {e.reason}")
-                if hasattr(e, 'verify_message'):
-                    logger.error(f"Verify message: {e.verify_message}")
-                if hasattr(e, 'verify_code'):
-                    logger.error(f"Verify code: {e.verify_code}")
-                logger.error("SSL/TLS connection failed. Please check server certificate and SSL configuration.")
-                raise
-                    
-            except asyncio.TimeoutError as e:
-                logger.error(f"Connection attempt timed out after 10 seconds: {e}")
-                raise
-            except ConnectionRefusedError as e:
-                logger.error(f"Connection refused by the server at {host}:{port}: {e}")
-                raise
-            except OSError as e:
-                logger.error(f"Network error while connecting to {host}:{port}: {e}")
+            except Exception as e:
+                # Handle connection errors
+                logger.error(f"Unexpected error during connection: {str(e)}", exc_info=True)
                 if hasattr(e, 'winerror') and e.winerror:
                     logger.error(f"Windows error code: {e.winerror}")
                 raise
-            except Exception as e:
-                logger.error(f"Unexpected error during connection: {e}", exc_info=True)
                 raise
             
             # Log SSL/TLS connection details
@@ -217,30 +205,77 @@ class TCPSyncClient:
                             not_after = dict(x[0] for x in cert.get('notAfter', []))
                             if not_after:
                                 logger.debug(f"Certificate valid until: {not_after}")
-                                
                     except Exception as e:
-                        logger.warning(f"Could not get SSL connection details: {e}", exc_info=True)
+                        logger.error(f"Error getting SSL/TLS details: {e}")
+                        if hasattr(e, 'winerror') and e.winerror:
+                            logger.error(f"Windows error code: {e.winerror}")
             
+            # Mark as connected and set the event immediately
             self.connected = True
             logger.info(f"Connected to {host}:{port}")
             
-            # Start the receive and heartbeat tasks
+            # Start receive task first
             self.receive_task = asyncio.create_task(self._receive_messages())
-            self.heartbeat_task = asyncio.create_task(self._send_heartbeats())
+            self.receive_task.add_done_callback(self._handle_task_done)
+            self._tasks.append(self.receive_task)
             
-            # Track both tasks
-            self._tasks.extend([self.receive_task, self.heartbeat_task])
+            # Start heartbeat if configured (but don't wait for it)
+            heartbeat_interval = getattr(self.config, 'heartbeat_interval', 30)
+            if heartbeat_interval > 0:
+                self.heartbeat_task = asyncio.create_task(self._send_heartbeats())
+                self.heartbeat_task.add_done_callback(self._handle_task_done)
+                self._tasks.append(self.heartbeat_task)
+                logger.debug(f"Started heartbeat task with interval: {heartbeat_interval}s")
             
-            # Add done callbacks to clean up
-            for task in [self.receive_task, self.heartbeat_task]:
-                task.add_done_callback(self._handle_task_done)
+            # Only set _connected_event if we don't require authentication
+            # Otherwise, it will be set after successful authentication
+            if not self.require_auth:
+                self._connected_event.set()
+                logger.info(f"Connection to {host}:{port} is ready for use")
             
-            # Notify connection handlers
-            self._notify_connection_handlers(True)
-            
-            # Start authentication if needed
+            # Authenticate if required
             if self.auth_callback and not self.authenticated:
-                await self._authenticate()
+                auth_success = await self._authenticate()
+                if not auth_success and self.require_auth:
+                    logger.error("Authentication failed and authentication is required")
+                    await self.disconnect()
+                    return False
+            
+            # Verify connection is stable by waiting for the first heartbeat
+            connect_timeout = getattr(self.config, 'connect_timeout', 10.0)
+            try:
+                # Create a new event to wait for the first heartbeat
+                first_heartbeat = asyncio.Event()
+                
+                # Store the original heartbeat handler
+                original_heartbeat_handler = self.message_handlers.get(MessageType.HEARTBEAT)
+                
+                # Create a wrapper that will set the event on first heartbeat
+                async def heartbeat_wrapper(message):
+                    if original_heartbeat_handler:
+                        await original_heartbeat_handler(message)
+                    first_heartbeat.set()
+                
+                # Replace the handler temporarily
+                self.message_handlers[MessageType.HEARTBEAT] = heartbeat_wrapper
+                
+                # Wait for either the first heartbeat or timeout
+                logger.debug("Waiting for first heartbeat to confirm connection stability...")
+                await asyncio.wait_for(
+                    first_heartbeat.wait(),
+                    timeout=connect_timeout
+                )
+                
+                # Restore the original handler
+                if original_heartbeat_handler:
+                    self.message_handlers[MessageType.HEARTBEAT] = original_heartbeat_handler
+                    
+                logger.debug("First heartbeat received, connection is stable")
+                
+            except asyncio.TimeoutError:
+                logger.warning(f"Connection to {host}:{port} did not receive initial heartbeat after {connect_timeout} seconds")
+                # Don't fail the connection just because of missing heartbeat
+                # The heartbeat check is just a warning for monitoring purposes
             
             return True
             
@@ -328,9 +363,14 @@ class TCPSyncClient:
         
         self.connected = False
         logger.info("Disconnected from server")
+        self._connected_event.set()  # Signal that connection is established
     
     async def _process_message(self, data: bytes) -> None:
-        """Process an incoming message from the server."""
+        """Process an incoming message from the server.
+        
+        This method handles message parsing, validation, and routing to appropriate handlers.
+        It includes special handling for authentication and error messages.
+        """
         try:
             # Parse the message first to get basic information
             try:
@@ -338,175 +378,321 @@ class TCPSyncClient:
                 logger.debug(f"Received {message.message_type.name} from server (ID: {message.message_id})")
             except (json.JSONDecodeError, struct.error, ValueError) as e:
                 logger.error(f"Failed to decode message: {e}")
+                # Try to send an error response if possible
+                if self.connected and self.writer and not self.writer.is_closing():
+                    error_msg = self.handler.create_error_message(
+                        code="invalid_message",
+                        message="Failed to decode message",
+                        details=str(e)
+                    )
+                    try:
+                        await self._send_raw(error_msg.to_bytes())
+                    except Exception as send_error:
+                        logger.debug(f"Failed to send error response: {send_error}")
                 return
 
-            # For error messages, extract the request_id before any validation
-            request_id = None
-            if message.message_type == MessageType.ERROR and isinstance(message.payload, dict):
-                request_id = message.payload.get('request_id')
-                error_msg = message.payload.get('error', 'Unknown server error')
+            # Update last seen timestamp for connection keepalive
+            self.last_message_time = time.time()
+            
+            # Handle error messages first
+            if message.message_type == MessageType.ERROR:
+                await self._handle_error_message(message)
+                return
                 
-                # If this is an error for a pending request, handle it immediately
+            # Handle authentication responses specially
+            if message.message_type == MessageType.AUTH_RESPONSE:
+                await self._handle_auth_response(message)
+                return
+                
+            # For other messages, check if authentication is required
+            if self.require_auth and not self.authenticated:
+                logger.warning(f"Received {message.message_type.name} before authentication. Discarding.")
+                # Optionally send an auth_required error back
+                if message.message_type not in [MessageType.HEARTBEAT]:  # Don't respond to heartbeats
+                    error_msg = self.handler.create_error_message(
+                        code="auth_required",
+                        message="Authentication required",
+                        request_id=getattr(message, 'message_id', None)
+                    )
+                    try:
+                        await self._send_raw(error_msg.to_bytes())
+                    except Exception as e:
+                        logger.debug(f"Failed to send auth_required error: {e}")
+                return
+                
+            # Validate the message signature if required
+            if self.require_auth and message.message_type not in [MessageType.HEARTBEAT]:
+                is_valid, reason = self.handler.validate_message(message, check_signature=True)
+                if not is_valid:
+                    logger.warning(f"Invalid message signature: {reason}. Discarding.")
+                    return
+
+            # Check if this is a response to a pending request
+            request_id = None
+            if isinstance(message.payload, dict):
+                request_id = message.payload.get('request_id')
                 if request_id and request_id in self.pending_requests:
                     future = self.pending_requests.pop(request_id)
                     if not future.done():
-                        future.set_exception(ConnectionAbortedError(f"Server error: {error_msg}"))
-                        logger.debug(f"Set exception for pending request {request_id}: {error_msg}")
-                    return
-
-            # For non-error messages or errors without a request_id, do validation
-            if message.message_type != MessageType.ERROR:
-                # Skip signature check for non-error messages if auth is not required
-                check_signature = self.require_auth
-                is_valid, reason = self.handler.validate_message(message, check_signature=check_signature)
-                if not is_valid:
-                    logger.warning(f"Invalid message received from server: {reason}. Discarding.")
-                    return
-
-                # Check if this is a response to a pending request
-                if isinstance(message.payload, dict):
-                    request_id = message.payload.get('request_id')
-                    if request_id and request_id in self.pending_requests:
-                        future = self.pending_requests.pop(request_id)
-                        if not future.done():
-                            future.set_result(message)
-                            logger.debug(f"Resolved pending request: {request_id}")
+                        future.set_result(message)
+                        logger.debug(f"Resolved pending request: {request_id}")
                         return  # The response has been handled
 
-            # If not a pending response, route to a general message handler
+            # Route to the appropriate message handler
             handler = self.message_handlers.get(message.message_type)
             if handler:
-                await handler(message)
-            elif message.message_type != MessageType.ERROR:  # Don't log for unhandled errors
-                logger.warning(f"No handler for unsolicited message type: {message.message_type.name}")
-
+                try:
+                    await handler(message)
+                except Exception as e:
+                    logger.error(f"Error in {message.message_type.name} handler: {e}", exc_info=True)
+                    # Send error response if possible
+                    if request_id and self.connected and self.writer and not self.writer.is_closing():
+                        error_msg = self.handler.create_error_message(
+                            code="handler_error",
+                            message="Error processing message",
+                            request_id=request_id,
+                            details=str(e)
+                        )
+                        try:
+                            await self._send_raw(error_msg.to_bytes())
+                        except Exception as send_error:
+                            logger.debug(f"Failed to send error response: {send_error}")
+            else:
+                logger.warning(f"No handler for message type: {message.message_type.name}")
+                
+        except asyncio.CancelledError:
+            raise  # Let the caller handle cancellation
         except Exception as e:
-            logger.error(f"Error processing message: {e}", exc_info=True)
-    
-    async def _authenticate(self) -> None:
-        """Authenticate with the server using the provided auth callback."""
-        if not self.auth_callback or self.authenticated or not self.connected:
-            logger.debug("Skipping authentication: callback=%s, authenticated=%s, connected=%s", 
-                       bool(self.auth_callback), self.authenticated, self.connected)
+            logger.error(f"Unexpected error in _process_message: {e}", exc_info=True)
+            
+    async def _handle_error_message(self, message: Message) -> None:
+        """Handle error messages from the server."""
+        if not isinstance(message.payload, dict):
+            logger.error("Received malformed error message")
             return
             
+        error_code = message.payload.get('code', 'unknown_error')
+        error_msg = message.payload.get('message', 'Unknown error')
+        request_id = message.payload.get('request_id')
+        
+        logger.error(f"Server error: {error_msg} (code: {error_code}, request_id: {request_id})")
+        
+        # Handle specific error codes
+        if error_code == 'auth_required':
+            self.authenticated = False
+            self._notify_auth_handlers(False, {
+                'code': error_code,
+                'message': error_msg,
+                'reconnecting': self.auto_reconnect
+            })
+            
+            # If we were previously authenticated, try to re-authenticate
+            if self.auth_callback and self.auto_reconnect:
+                logger.info("Authentication required, attempting to re-authenticate...")
+                try:
+                    await self._authenticate()
+                except Exception as e:
+                    logger.error(f"Re-authentication failed: {e}")
+        
+        # Handle the error for the specific request if possible
+        if request_id and request_id in self.pending_requests:
+            future = self.pending_requests.pop(request_id)
+            if not future.done():
+                future.set_exception(ConnectionError(f"Server error: {error_msg} (code: {error_code})"))
+    
+    async def _authenticate(self) -> bool:
+        """Handle authentication with the server.
+        
+        This method handles the authentication flow with the server, including:
+        1. Getting credentials from the auth callback
+        2. Sending auth request
+        3. Waiting for and validating the response
+        4. Updating connection state
+        
+        Returns:
+            bool: True if authentication was successful, False otherwise
+        """
+        if not self.connected:
+            logger.warning("Cannot authenticate: not connected to server")
+            return False
+            
+        if self.authenticated:
+            logger.debug("Already authenticated")
+            return True
+            
+        if not callable(self.auth_callback):
+            logger.error("Auth callback is not callable")
+            self._notify_auth_handlers(False, "Invalid auth configuration")
+            return False
+            
+        request_id = str(uuid.uuid4())
+        logger.debug(f"Starting authentication (request_id: {request_id})")
+        
         try:
-            # Generate a unique request ID for this authentication attempt
-            request_id = str(uuid.uuid4())
-            logger.debug(f"Starting authentication process (request_id: {request_id})")
-            
-            # Get authentication data from callback
-            auth_data = await self.auth_callback()
-            if not auth_data:
-                logger.warning("No authentication data provided")
-                self._notify_auth_handlers(False)
-                return
-            
-            # Add request ID to auth data
-            auth_data['request_id'] = request_id
-            
-            logger.debug("Sending authentication request with data: %s", 
-                        {k: v for k, v in auth_data.items() if k != 'password'})
+            # Get authentication data from the callback
+            try:
+                auth_data = await self.auth_callback()
+                if not auth_data:
+                    logger.warning("No authentication data provided")
+                    self._notify_auth_handlers(False, "No credentials provided")
+                    return False
+            except Exception as e:
+                logger.error(f"Error in auth callback: {e}")
+                self._notify_auth_handlers(False, f"Auth callback failed: {e}")
+                return False
+
+            # Prepare auth request
+            if not isinstance(auth_data, dict):
+                auth_data = {'token': str(auth_data)}
                 
-            # Create and send auth request
-            auth_request = self.handler.create_message(
-                MessageType.AUTH_REQUEST,
-                auth_data
-            )
+            # Add metadata to the auth request
+            auth_data.update({
+                'request_id': request_id,
+                'timestamp': int(time.time()),
+                'client_version': '1.0.0'  # Could be made configurable
+            })
             
-            # Increase timeout for authentication
-            auth_timeout = 10.0  # 10 seconds timeout for authentication
-            logger.debug(f"Waiting for authentication response (timeout: {auth_timeout}s)...")
+            # Create and validate the auth message
+            try:
+                auth_request = self.handler.create_message(
+                    MessageType.AUTH_REQUEST,
+                    auth_data
+                )
+                
+                # Validate the message before sending
+                is_valid, reason = self.handler.validate_message(auth_request, check_signature=False)
+                if not is_valid:
+                    logger.error(f"Invalid auth request: {reason}")
+                    self._notify_auth_handlers(False, f"Invalid auth request: {reason}")
+                    return False
+                    
+            except Exception as e:
+                logger.error(f"Error creating auth request: {e}")
+                self._notify_auth_handlers(False, f"Error creating auth request: {e}")
+                return False
             
-            # Create a future for the response
+            # Register for the response before sending to avoid race conditions
             response_future = asyncio.Future()
             self.pending_requests[request_id] = response_future
             
+            # Send the auth request with retry logic
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    await self.send_message(auth_request)
+                    logger.debug(f"Authentication request sent (request_id: {request_id}, attempt {attempt + 1}/{max_retries})")
+                    break
+                except (ConnectionError, asyncio.TimeoutError) as e:
+                    if attempt == max_retries - 1:
+                        logger.error(f"Failed to send auth request after {max_retries} attempts")
+                        raise
+                    logger.warning(f"Auth request failed (attempt {attempt + 1}/{max_retries}): {e}")
+                    await asyncio.sleep(1)  # Short delay before retry
+            
+            # Wait for response with timeout
             try:
-                # Send the auth request
-                await self.send_message(auth_request)
-                logger.debug(f"Authentication request sent (request_id: {request_id})")
-                
-                # Wait for the response with timeout
                 response = await asyncio.wait_for(
                     response_future,
-                    timeout=auth_timeout
+                    timeout=15.0  # Increased timeout for auth
                 )
-                
-                if not response:
-                    logger.error("No response object received from server")
-                    raise Exception("No response received from server")
-                
-                logger.debug("Received response type: %s", response.message_type)
-                
-                # Process the response
-                if response.message_type != MessageType.AUTH_RESPONSE:
-                    logger.error("Unexpected message type: %s", response.message_type)
-                    raise Exception(f"Unexpected message type: {response.message_type}")
-                
-                # Handle the authentication response
-                if not response.payload.get('success'):
-                    error_msg = response.payload.get('error', 'Authentication failed')
-                    logger.error("Authentication failed: %s", error_msg)
-                    self._notify_auth_handlers(False, error_msg)
-                    return
-                
-                # Authentication successful
-                logger.info("Authentication successful")
-                self.authenticated = True
-                self._notify_auth_handlers(True, response.payload.get('auth_data', {}))
-                
             except asyncio.TimeoutError:
                 logger.error("Authentication timed out waiting for response")
                 self._notify_auth_handlers(False, "Authentication timed out")
-                raise Exception("Authentication timed out")
+                return False
                 
-            except Exception as e:
-                logger.error("Error during authentication: %s", str(e), exc_info=True)
-                self._notify_auth_handlers(False, str(e))
-                raise
+            # Validate response
+            if not response or response.message_type != MessageType.AUTH_RESPONSE:
+                error_msg = f"Invalid response type: {getattr(response, 'message_type', 'None')}"
+                logger.error(error_msg)
+                self._notify_auth_handlers(False, error_msg)
+                return False
                 
-            finally:
-                # Clean up the future
-                self.pending_requests.pop(request_id, None)
-            
-            # Check if this is an error message
-            if response.message_type == MessageType.ERROR:
-                error_msg = response.payload.get('error', 'Unknown error')
-                raise Exception(f"Authentication error: {error_msg}")
-                
-            if response.message_type != MessageType.AUTH_RESPONSE:
-                raise Exception(f"Unexpected response type: {response.message_type}")
-            
             # Check if authentication was successful
             if not response.payload.get('success'):
                 error_msg = response.payload.get('error', 'Authentication failed')
-                logger.error("Authentication failed: %s", error_msg)
-                self._notify_auth_handlers(False)
-                return
+                logger.error(f"Authentication failed: {error_msg}")
+                self._notify_auth_handlers(False, error_msg)
+                return False
                 
-            # Authentication successful
+            # Update authentication state
             self.authenticated = True
             self.auth_data = response.payload.get('auth_data', {})
             logger.info("Successfully authenticated with server")
-            logger.debug("Authentication data: %s", self.auth_data)
             
-            # Notify auth handlers
-            self._notify_auth_handlers(True)
+            # Set the connected event now that we're fully authenticated
+            # This ensures no messages are sent until authentication is complete
+            self._connected_event.set()
+            logger.info("Connection is now fully established and ready for use")
             
-        except asyncio.TimeoutError as e:
-            logger.error("Authentication timed out: %s", e)
-            self._notify_auth_handlers(False)
+            # Notify handlers of successful authentication
+            self._notify_auth_handlers(True, self.auth_data)
+            return True
+            
+        except asyncio.CancelledError:
+            logger.debug("Authentication was cancelled")
+            self._notify_auth_handlers(False, "Authentication cancelled")
             raise
+            
         except Exception as e:
-            logger.error("Authentication error: %s", str(e), exc_info=True)
-            self._notify_auth_handlers(False)
-            raise
-    
+            logger.error(f"Authentication error: {e}", exc_info=True)
+            self.authenticated = False
+            self.auth_data = None
+            self._notify_auth_handlers(False, str(e))
+            return False
+            
+        finally:
+            # Always clean up the future
+            if request_id in self.pending_requests:
+                self.pending_requests.pop(request_id, None)
+
     async def _handle_auth_response(self, message: Message) -> None:
         """Handle authentication response from server."""
-        # This is handled in the _authenticate method via pending_requests
-        pass
+        future = None
+        try:
+            if not isinstance(message.payload, dict):
+                logger.error("Invalid auth response: payload is not a dictionary")
+                return
+                
+            # Check if this is a response to a pending authentication request
+            request_id = message.payload.get('request_id')
+            if not request_id:
+                logger.warning("Received auth response without request_id")
+                return
+                
+            # Find the pending request
+            future = self.pending_requests.pop(request_id, None)
+            if not future:
+                logger.warning(f"Received auth response for unknown request_id: {request_id}")
+                return
+                
+            if future.done():
+                logger.warning(f"Received duplicate auth response for request_id: {request_id}")
+                return
+                
+            # Check if authentication was successful
+            if message.payload.get('success'):
+                logger.info("Authentication successful")
+                self.authenticated = True
+                self.auth_data = message.payload.get('auth_data', {})
+                
+                # Set the connected event now that we're fully authenticated
+                self._connected_event.set()
+                logger.info("Connection is now fully established and ready for use")
+                
+                future.set_result(message)
+                self._notify_auth_handlers(True, self.auth_data)
+            else:
+                error_msg = message.payload.get('error', 'Authentication failed')
+                logger.error(f"Authentication failed: {error_msg}")
+                future.set_exception(ConnectionRefusedError(error_msg))
+                self._notify_auth_handlers(False, {'error': error_msg})
+                
+        except Exception as e:
+            logger.error(f"Error processing auth response: {e}", exc_info=True)
+            # If we have a future, make sure it's completed with an exception
+            if future is not None and not future.done():
+                future.set_exception(e)
+                self._notify_auth_handlers(False, {'error': str(e)})
     
     async def _handle_error(self, message: Message) -> None:
         """Handle error messages from the server."""
@@ -580,59 +766,120 @@ class TCPSyncClient:
         if not self.auto_reconnect or self.connected:
             return
             
-        while not self.connected:
+        max_reconnect_attempts = getattr(self.config, 'max_reconnect_attempts', 10)
+        attempt = 0
+        
+        while not self.connected and attempt < max_reconnect_attempts:
+            attempt += 1
             try:
-                logger.info(f"Attempting to reconnect in {self.reconnect_delay} seconds...")
+                logger.info(f"Attempting to reconnect (attempt {attempt}/{max_reconnect_attempts}) in {self.reconnect_delay} seconds...")
                 await asyncio.sleep(self.reconnect_delay)
                 
                 # Double the delay for next time (with max of 5 minutes)
                 self.reconnect_delay = min(self.reconnect_delay * 2, 300)
                 
+                # Reset connection state before reconnecting
+                await self._reset_connection()
+                
                 # Try to reconnect
                 if await self.connect(self.config.sync_host, self.config.sync_port):
-                    logger.info("Successfully reconnected to server")
+                    # If authentication is required, re-authenticate
+                    if self.require_auth and self.auth_callback:
+                        logger.info("Re-authenticating after reconnection...")
+                        auth_success = await self._authenticate()
+                        if not auth_success:
+                            logger.error("Re-authentication failed")
+                            continue  # Will retry with backoff
+                    
+                    logger.info("Successfully reconnected and re-authenticated with server")
                     self.reconnect_delay = 5  # Reset delay on successful connection
+                    self._notify_connection_handlers(True)
                     return
                     
             except asyncio.CancelledError:
                 logger.info("Reconnection cancelled")
                 return
             except Exception as e:
-                logger.error(f"Reconnection attempt failed: {e}")
+                logger.error(f"Reconnection attempt {attempt} failed: {e}")
+                if attempt >= max_reconnect_attempts:
+                    logger.error(f"Max reconnection attempts ({max_reconnect_attempts}) reached. Giving up.")
+                    self._notify_connection_handlers(False)
+                    break
     
     async def _reset_connection(self) -> None:
-        """Reset connection state."""
+        """Reset connection state and clean up resources.
+        
+        This method ensures all resources are properly cleaned up and notifies
+        any registered handlers of the disconnection.
+        
+        Note:
+            This method is idempotent and can be called multiple times safely.
+        """
         was_connected = self.connected
         was_authenticated = self.authenticated
         
-        # Close existing connection
-        if self.writer and not self.writer.is_closing():
-            self.writer.close()
-            try:
-                await self.writer.wait_closed()
-            except Exception as e:
-                logger.debug(f"Error closing writer: {e}")
-        
-        # Reset state
-        self.reader = None
-        self.writer = None
+        # Reset state first to prevent new operations
         self.connected = False
         self.authenticated = False
+        
+        # Clear the connected event to block new operations
+        self._connected_event.clear()
+        
+        # Close existing connection if needed
+        if self.writer is not None:
+            writer = self.writer
+            self.writer = None
+            
+            if not writer.is_closing():
+                try:
+                    # Try to send a graceful close if possible
+                    if writer.can_write_eof():
+                        writer.write_eof()
+                        await asyncio.wait_for(writer.drain(), timeout=1.0)
+                    
+                    # Close the writer
+                    writer.close()
+                    try:
+                        await asyncio.wait_for(writer.wait_closed(), timeout=2.0)
+                    except asyncio.TimeoutError:
+                        logger.warning("Timed out waiting for writer to close")
+                        
+                except (ConnectionResetError, BrokenPipeError):
+                    # Connection was already closed/reset
+                    pass
+                except Exception as e:
+                    logger.debug(f"Error during connection close: {e}", exc_info=True)
+        
+        # Clear reader reference
+        self.reader = None
         
         # Cancel any pending tasks
         await self._cancel_tasks()
         
-        # Cancel pending requests
-        for future in self.pending_requests.values():
-            if not future.done():
-                future.set_exception(ConnectionError("Connection lost"))
-        self.pending_requests.clear()
+        # Cancel pending requests with proper error
+        if self.pending_requests:
+            logger.debug(f"Cancelling {len(self.pending_requests)} pending requests")
+            for request_id, future in list(self.pending_requests.items()):
+                if not future.done():
+                    future.set_exception(ConnectionError("Connection reset"))
+                del self.pending_requests[request_id]
         
         # Notify handlers if state changed
-        if was_connected:
-            self._notify_connection_handlers(False)
-        if was_authenticated:
-            self._notify_auth_handlers(False)
+        try:
+            if was_connected:
+                self._notify_connection_handlers(False)
+                
+            if was_authenticated:
+                # Only notify auth handlers if we were previously authenticated
+                self._notify_auth_handlers(False, {
+                    'connected': False,
+                    'authenticated': False,
+                    'message': 'Connection reset'
+                })
+        except Exception as e:
+            logger.error(f"Error notifying state change handlers: {e}", exc_info=True)
+        
+        logger.info("Connection reset complete")
     
     async def send_message(self, message: Message, wait_for_response: bool = False) -> Optional[Message]:
         """Send a message to the server with security features.
@@ -645,33 +892,103 @@ class TCPSyncClient:
             Optional[Message]: The response message if wait_for_response is True, None otherwise
                 
         Raises:
-            ConnectionError: If not connected to the server
+            ConnectionError: If not connected to the server or connection is not ready
             ValueError: If message validation fails
+            asyncio.TimeoutError: If waiting for connection times out
         """
-        if not self.connected or not self.writer:
+        # Skip readiness check for AUTH_REQUEST messages since authentication is what makes the connection ready
+        if hasattr(message, 'message_type') and message.message_type == MessageType.AUTH_REQUEST:
+            logger.debug("Bypassing connection readiness check for authentication message")
+            # Continue without waiting for connected_event
+        else:
+            # Wait for connection to be fully established for non-auth messages
+            try:
+                await asyncio.wait_for(
+                    self._connected_event.wait(),
+                    timeout=10.0  # Reasonable timeout for connection to be ready
+                )
+            except asyncio.TimeoutError:
+                logger.error("Timed out waiting for connection to be ready after 10s")
+                raise ConnectionError("Timed out waiting for connection to be ready")
+            
+        if not self.connected or not self.writer or self.writer.is_closing():
             raise ConnectionError("Not connected to server")
         
         request_id = None
         future = None
         
         try:
-            # Add request ID if we're waiting for a response
+            # Create a copy of the message to avoid modifying the original
+            message_to_send = message.copy() if hasattr(message, 'copy') else Message(**message.to_dict())
+
+            # Add request ID if we're waiting for a response - must be done BEFORE signing
             if wait_for_response:
                 request_id = str(uuid.uuid4())
-                if not message.payload:
-                    message.payload = {}
-                message.payload['request_id'] = request_id
+                if not message_to_send.payload:
+                    message_to_send.payload = {}
+                message_to_send.payload['request_id'] = request_id
                 future = asyncio.Future()
                 self.pending_requests[request_id] = future
-            
-            # Sign the message if we have a secret key
-            if self.handler.secret_key and not message.signature:
-                message.sign(self.handler.secret_key)
+                logger.debug(f"[CLIENT] Added request_id to message payload: {request_id}")
+
+            # Only sign the message if it hasn't been signed yet and we have a secret key
+            if not message_to_send.signature and self.handler.secret_key:
+                logger.debug(f"[CLIENT] Signing message {message_to_send.message_id} before sending")
+                logger.debug(f"[CLIENT] Message before signing: {message_to_send.__dict__}")
                 
+                # Log the payload before signing
+                if message_to_send.payload:
+                    logger.debug("[CLIENT] Payload before signing:")
+                    for k, v in message_to_send.payload.items():
+                        logger.debug(f"[CLIENT]   {k}: {v!r} (type: {type(v).__name__})")
+                
+                # Sign the message
+                message_to_send.sign(self.handler.secret_key)
+                logger.debug(f"[CLIENT] Message after signing: {message_to_send.__dict__}")
+                
+                # Verify the signature immediately to catch any issues
+                try:
+                    is_valid = message_to_send.verify_signature(self.handler.secret_key)
+                    if not is_valid:
+                        logger.error("[CLIENT] Message failed signature verification immediately after signing!")
+                        logger.error(f"[CLIENT] Message: {message_to_send.__dict__}")
+                        logger.error(f"[CLIENT] Signing key: {self.handler.secret_key[:8].hex()}...")
+                except Exception as e:
+                    logger.error(f"[CLIENT] Error verifying signature after signing: {e}")
+                    raise
+            else:
+                logger.debug(
+                    f"[CLIENT] Message signing skipped - "
+                    f"already_signed={bool(message_to_send.signature)}, "
+                    f"has_secret_key={bool(self.handler.secret_key)}"
+                )
+            
+            # Always validate the signature if the message is signed
+            check_signature = bool(message_to_send.signature)
+            logger.debug(
+                f"[CLIENT] Will {'validate' if check_signature else 'skip validation of'} "
+                f"signature for message {message_to_send.message_id}"
+            )
+            
+            # Log message details before validation
+            logger.debug(f"[CLIENT] Message type before validation: {type(message_to_send.message_type).__name__}")
+            if hasattr(message_to_send.message_type, 'name'):
+                logger.debug(f"[CLIENT] Message type name: {message_to_send.message_type.name}")
+            
             # Validate the message before sending
-            is_valid, reason = self.handler.validate_message(message, check_signature=False)
-            if not is_valid:
-                raise ValueError(f"Invalid message: {reason}")
+            logger.debug(f"[CLIENT] Validating message {message_to_send.message_id} before sending")
+            try:
+                is_valid, reason = self.handler.validate_message(message_to_send, check_signature=check_signature)
+                if not is_valid:
+                    logger.error(f"[CLIENT] Message validation failed: {reason}")
+                    logger.error(f"[CLIENT] Message details: {message_to_send.__dict__}")
+                    raise ValueError(f"Invalid message: {reason}")
+            except Exception as e:
+                logger.error(f"[CLIENT] Error during message validation: {str(e)}")
+                logger.error(f"[CLIENT] Message type: {type(message_to_send.message_type).__name__}")
+                logger.error(f"[CLIENT] Message dict: {message_to_send.__dict__}")
+                raise
+            logger.debug(f"[CLIENT] Message {message.message_id} validation successful")
             
             # Send the message
             await self._send_raw(message.to_bytes())
@@ -733,22 +1050,47 @@ class TCPSyncClient:
             logger.error(f"Error sending data: {e}")
             raise
     
-            logger.error(f"Error sending message: {e}", exc_info=True)
-            raise
-
     async def _send_heartbeats(self) -> None:
         """Send periodic heartbeat messages to the server."""
-        while self.connected:
+        heartbeat_interval = getattr(self.config, 'heartbeat_interval', 30)  # Default to 30s if not set
+        heartbeat_timeout = getattr(self.config, 'heartbeat_timeout', 10)  # Default to 10s if not set
+        max_missed = getattr(self.config, 'max_missed_heartbeats', 3)  # Default to 3 if not set
+        missed_heartbeats = 0
+        
+        while self.connected and not (self.writer and self.writer.is_closing()):
             try:
-                heartbeat = self.handler.create_message(MessageType.HEARTBEAT)
-                await self.send_message(heartbeat)
-                await asyncio.sleep(30)  # Send heartbeat every 30 seconds
+                # Send a heartbeat message
+                message = Message(
+                    message_type=MessageType.HEARTBEAT,
+                    payload={"timestamp": int(time.time())}
+                )
+                
+                # Send with timeout
+                try:
+                    await asyncio.wait_for(
+                        self.send_message(message, wait_for_response=True),
+                        timeout=heartbeat_timeout
+                    )
+                    missed_heartbeats = 0  # Reset counter on successful heartbeat
+                    logger.debug("Heartbeat acknowledged")
+                except asyncio.TimeoutError:
+                    missed_heartbeats += 1
+                    logger.warning(f"Heartbeat {missed_heartbeats}/{max_missed} missed")
+                    if missed_heartbeats >= max_missed:
+                        logger.error("Max missed heartbeats reached, disconnecting")
+                        await self.disconnect()
+                        break
+                
+                # Wait for the next heartbeat
+                await asyncio.sleep(heartbeat_interval)
                 
             except asyncio.CancelledError:
+                logger.debug("Heartbeat task cancelled")
                 break
             except Exception as e:
-                logger.error(f"Error sending heartbeat: {e}")
-                await asyncio.sleep(5)  # Wait before retrying
+                logger.error(f"Error in heartbeat task: {e}")
+                await self._handle_connection_error()
+                break
     
     # Message handlers
     async def _handle_sync_request(self, message: Message) -> None:
@@ -835,10 +1177,7 @@ class TCPSyncClient:
     
     async def _handle_heartbeat(self, message: Message) -> None:
         """Handle heartbeat message from server."""
-        logger.debug("Received heartbeat from server")
-        # Send ack back to server
-        ack = self.handler.create_message(MessageType.HEARTBEAT, {})
-        await self.send_message(ack)
+        logger.debug("Received heartbeat from server. No action needed.")
 
     async def __aenter__(self):
         """Async context manager entry."""

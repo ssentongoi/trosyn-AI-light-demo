@@ -26,7 +26,7 @@ class TCPSyncServer:
     def __init__(
         self,
         config: LANConfig,
-        handler: ProtocolHandler,
+        protocol_handler: ProtocolHandler,
         auth_middleware: Optional[AuthMiddleware] = None,
         require_auth: bool = True,
         verify_ssl: Optional[bool] = None
@@ -42,7 +42,7 @@ class TCPSyncServer:
                       If None, uses TROSYNC_VERIFY_SSL env var.
         """
         self.config = config
-        self.handler = handler
+        self.handler = protocol_handler
         self.auth_middleware = auth_middleware
         self.require_auth = require_auth
         self.server: Optional[asyncio.Server] = None
@@ -68,6 +68,28 @@ class TCPSyncServer:
         }
         self.message_handlers = {**self.public_handlers, **self.authenticated_handlers}
         self._tasks: List[asyncio.Task] = []
+        
+    def message_handler(self, message_type: MessageType):
+        """Decorator to register a message handler for a specific message type.
+        
+        Args:
+            message_type: The message type to handle
+            
+        Returns:
+            A decorator function that registers the handler
+        """
+        def decorator(func):
+            logger.debug(f"Registering handler for message type {message_type.name}: {func.__name__}")
+            self.message_handlers[message_type] = func
+            return func
+        return decorator
+
+    @property
+    def port(self) -> Optional[int]:
+        """Return the port the server is listening on."""
+        if self.server and self.server.sockets:
+            return self.server.sockets[0].getsockname()[1]
+        return None
 
     async def start(self) -> None:
         """Start the TCP sync server non-blockingly."""
@@ -83,35 +105,25 @@ class TCPSyncServer:
 
         try:
             # Configure server parameters
-            server_params = {
-                'client_connected_cb': self._handle_client,
-                'host': '0.0.0.0',  # Listen on all interfaces
-                'port': self.config.sync_port,
-                'ssl': self.ssl_context if self.config.use_ssl else None,
-                'reuse_address': True,
-                'reuse_port': False,
-                'start_serving': True
-            }
-            
+            host = '0.0.0.0'
+            port = self.config.sync_port
+
             # Log server startup details
             protocol = "TLS" if self.ssl_context else "TCP (unencrypted)"
-            logger.info(f"Starting {protocol} server on port {self.config.sync_port}")
-            
+            logger.info(f"Starting {protocol} server on {host}:{port}")
+
             if self.ssl_context:
-                ssl_context = self.ssl_context
-                logger.debug(f"SSL context settings: verify_mode={ssl_context.verify_mode}, "
-                            f"check_hostname={ssl_context.check_hostname}")
-                
-                # Log certificate information
-                try:
-                    cert = ssl_context.get_ca_certs()
-                    if cert:
-                        logger.debug(f"Loaded {len(cert)} CA certificates")
-                except Exception as e:
-                    logger.warning(f"Could not get CA certificates: {e}")
-            
-            # Start the server
-            self.server = await asyncio.start_server(**server_params)
+                logger.debug(f"SSL context settings: verify_mode={self.ssl_context.verify_mode}, "
+                             f"check_hostname={self.ssl_context.check_hostname}")
+
+            self.server = await asyncio.start_server(
+                self._handle_client,
+                host,
+                port,
+                ssl=self.ssl_context,
+                reuse_address=True,
+                start_serving=True
+            )
             
             # Log server information
             if self.server.sockets:
@@ -248,14 +260,48 @@ class TCPSyncServer:
                 del self.clients[client_id]
             logger.info(f"Client {client_id} connection closed")
 
+    async def send_message(self, client_id: str, message: Message) -> None:
+        """Send a message to a connected client.
+        
+        Args:
+            client_id: The ID of the client to send the message to
+            message: The message to send
+            
+        Raises:
+            ValueError: If the client is not connected
+            ConnectionError: If there's an error sending the message
+        """
+        if client_id not in self.clients:
+            raise ValueError(f"Client {client_id} is not connected")
+            
+        try:
+            await self._send_message(message, client_id)
+        except Exception as e:
+            logger.error(f"Error sending message to client {client_id}: {e}")
+            raise ConnectionError(f"Failed to send message to client {client_id}: {e}") from e
+
     async def _send_message(self, message: Message, client_id: str) -> None:
-        """Send a message to a specific client."""
+        """Send a message to a specific client.
+        
+        Args:
+            message: The message to send
+            client_id: ID of the client to send the message to
+            
+        Note:
+            The message will be signed with the protocol handler's secret key
+            just before sending to ensure the signature is valid.
+        """
         if client_id not in self.clients:
             logger.warning(f"Attempted to send message to disconnected client {client_id}")
             return
 
         writer = self.clients[client_id]['writer']
         try:
+            # Ensure the message is signed with the current secret key
+            if not message.signature and self.handler.secret_key:
+                message.sign(self.handler.secret_key)
+                logger.debug(f"Signed message {message.message_id} before sending to {client_id}")
+                
             data = message.to_bytes()
             # Prepend message length
             writer.write(struct.pack('!I', len(data)))
@@ -266,7 +312,7 @@ class TCPSyncServer:
             logger.warning(f"Connection lost with client {client_id} while sending message.")
             # The connection is closed, _handle_client will do the cleanup.
         except Exception as e:
-            logger.error(f"Error sending message to {client_id}: {e}")
+            logger.error(f"Error sending message to {client_id}: {e}", exc_info=True)
 
     async def _send_error(self, client_id: str, error: str, code: str = "generic_error", request_id: Optional[str] = None) -> None:
         """Send an error message to a client."""
@@ -298,6 +344,9 @@ class TCPSyncServer:
                     logger.warning(f"Error waiting for client {client_id} connection to close: {e}")
 
     async def _process_message(self, data: bytes, client_id: str) -> None:
+        logger.debug(f"[SERVER] Received {len(data)} bytes from client {client_id}")
+        logger.debug(f"[SERVER] Raw message (hex): {data.hex()}")
+        logger.debug(f"[SERVER] Raw message (str): {data.decode('utf-8', errors='replace')}")
         """Process an incoming message from a client."""
         message: Optional[Message] = None
         request_id: Optional[str] = None
@@ -311,14 +360,29 @@ class TCPSyncServer:
 
             # Only validate signature if authentication is required
             check_signature = self.require_auth and message.message_type not in self.public_handlers
+            logger.debug(f"[SERVER] Validating message {message.message_id} from {client_id}")
+            logger.debug(f"[SERVER] Check signature: {check_signature}, Message type: {message.message_type}")
+            logger.debug(f"[SERVER] Message before validation: {message.__dict__}")
+            
             is_valid, reason = self.handler.validate_message(
-                message, 
-                check_signature=check_signature
+                message,
+                check_signature=check_signature,
+                check_replay=message.message_type not in self.public_handlers
             )
+            
             if not is_valid:
-                logger.warning(f"Invalid message from {client_id}: {reason}. Closing connection.")
-                await self._send_error(client_id, reason, code="validation_failed", request_id=request_id)
-                await self._close_client_connection(client_id)
+                logger.warning(f"[SERVER] Invalid message from {client_id}: {reason}")
+                logger.warning(f"[SERVER] Message details: {message.__dict__}")
+                logger.warning(f"[SERVER] Message type: {message.message_type}, Checked signature: {check_signature}")
+                
+                if message.signature:
+                    logger.warning(f"[SERVER] Message signature: {message.signature}")
+                    logger.warning(f"[SERVER] Message data for signing: {message.to_dict()}")
+                
+                await self._send_error(client_id, f"Invalid message: {reason}")
+                if "signature" in reason.lower():
+                    logger.error(f"[SERVER] Signature validation failed for message from {client_id}, closing connection")
+                    await self._close_client_connection(client_id)
                 return
 
             # Check authentication if required
@@ -327,11 +391,21 @@ class TCPSyncServer:
                 not self.clients[client_id]['authenticated']):
                 logger.warning(f"Unauthenticated access attempt from {client_id}. Closing connection.")
                 await self._send_error(client_id, "Authentication required", code="auth_required", request_id=request_id)
-                await self._close_client_connection(client_id)
                 return
 
             # Update last seen timestamp
             self.clients[client_id]['last_seen'] = asyncio.get_event_loop().time()
+
+            # Log authentication status
+            is_authenticated = self.clients[client_id].get('authenticated', False)
+            logger.debug(f"[SERVER] Client {client_id} authenticated: {is_authenticated}")
+            logger.debug(f"[SERVER] Message type: {message.message_type}, requires auth: {message.message_type in self.authenticated_handlers}")
+                
+            # Check if message requires authentication
+            if (message.message_type in self.authenticated_handlers and not is_authenticated):
+                logger.warning(f"[SERVER] Unauthenticated message {message.message_type} from {client_id}")
+                await self._send_error(client_id, "Authentication required", "unauthorized")
+                return
 
             # Route to the appropriate handler
             handler = self.message_handlers.get(message.message_type)
@@ -352,34 +426,89 @@ class TCPSyncServer:
 
     async def _handle_auth_request(self, message: Message, client_id: str) -> None:
         """Handle an authentication request."""
+        logger.debug(f"[SERVER] Handling auth request from client {client_id}. Message ID: {message.message_id}")
+        logger.debug(f"[SERVER] Auth request payload: {message.payload}")
+        logger.debug(f"[SERVER] Handler type: {type(self.handler)}, Auth middleware present: {self.auth_middleware is not None}")
+        
         if not self.auth_middleware:
-            logger.warning("Auth middleware not configured, ignoring auth request.")
+            logger.error("Auth middleware not configured, authentication will fail. This is a server configuration issue.")
+            # Instead of silently ignoring, send a proper error response
+            response_payload = {
+                'success': False, 
+                'error': 'Server configuration error: Authentication middleware not configured',
+                'request_id': message.message_id
+            }
+            response = self.handler.create_message(
+                MessageType.AUTH_RESPONSE, 
+                response_payload,
+                request_id=message.message_id
+            )
+            await self._send_message(response, client_id)
             return
 
-        is_authenticated, auth_data = await self.auth_middleware(message)
-        if is_authenticated:
-            self.clients[client_id]['authenticated'] = True
-            self.clients[client_id]['auth_data'] = auth_data
-            response_payload = {'success': True}
-            logger.info(f"Client {client_id} authenticated successfully.")
-        else:
-            response_payload = {'success': False, 'error': 'Invalid credentials'}
-            logger.warning(f"Client {client_id} authentication failed.")
+        try:
+            logger.debug(f"[SERVER] Invoking auth middleware for client {client_id}")
+            # Detailed logging of the message before auth middleware processing
+            logger.debug(f"[SERVER] Auth message contents: {message.to_dict()}")
+            
+            try:
+                is_authenticated, auth_data = await self.auth_middleware(message)
+                logger.debug(f"[SERVER] Auth middleware result: is_authenticated={is_authenticated}, auth_data={auth_data}")
+            except Exception as auth_err:
+                # Detailed exception logging for auth middleware
+                logger.error(f"[SERVER] Exception in auth middleware: {type(auth_err).__name__}: {str(auth_err)}")
+                logger.exception("[SERVER] Full auth middleware exception:", exc_info=auth_err)
+                raise RuntimeError(f"Auth middleware error: {type(auth_err).__name__}: {str(auth_err)}") from auth_err
+            
+            if is_authenticated:
+                self.clients[client_id]['authenticated'] = True
+                self.clients[client_id]['auth_data'] = auth_data
+                response_payload = {
+                    'success': True, 
+                    'auth_data': auth_data,
+                    'request_id': message.message_id
+                }
+                logger.info(f"Client {client_id} authenticated successfully.")
+            else:
+                response_payload = {
+                    'success': False, 
+                    'error': 'Invalid credentials',
+                    'request_id': message.message_id
+                }
+                logger.warning(f"Client {client_id} authentication failed: invalid credentials")
+        except Exception as e:
+            # Enhanced error logging with exception chain and message details
+            logger.error(f"[SERVER] Error during authentication for client {client_id}: {type(e).__name__}: {str(e)}")
+            logger.exception("[SERVER] Full authentication exception stack:", exc_info=True)
+            
+            # Include more detailed error information in response
+            response_payload = {
+                'success': False, 
+                'error': f'Server error: {type(e).__name__}: {str(e)}',
+                'error_type': type(e).__name__,
+                'request_id': message.message_id
+            }
 
-        # Echo the request_id back to the client for proper response handling
-        if 'request_id' in message.payload:
-            response_payload['request_id'] = message.payload['request_id']
-
-        response = self.handler.create_message(MessageType.AUTH_RESPONSE, response_payload)
+        response = self.handler.create_message(
+            MessageType.AUTH_RESPONSE, 
+            response_payload,
+            request_id=message.message_id  # Link response to request
+        )
+        
+        logger.debug(f"[SERVER] Sending AUTH_RESPONSE to {client_id} for request {message.message_id}")
         await self._send_message(response, client_id)
 
     async def _handle_sync_request(self, message: Message, client_id: str) -> None:
-        """Placeholder for handling sync requests."""
+        """Handle a sync request from a client."""
         logger.debug(f"Received sync request from {client_id}")
+        if self.handler:
+            await self.handler.handle_message(message, self.clients[client_id]['writer'])
 
     async def _handle_sync_data(self, message: Message, client_id: str) -> None:
-        """Placeholder for handling sync data."""
+        """Handle sync data from a client."""
         logger.debug(f"Received sync data from {client_id}")
+        if self.handler:
+            await self.handler.handle_message(message, self.clients[client_id]['writer'])
 
     async def _handle_sync_ack(self, message: Message, client_id: str) -> None:
         """Placeholder for handling sync acknowledgments."""

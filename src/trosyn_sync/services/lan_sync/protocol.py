@@ -69,57 +69,323 @@ class Message:
         except (ValueError, TypeError):
             return True
             
+    def _get_signing_data(self) -> Dict[str, Any]:
+        """Get the data to be used for signing/verification.
+
+        This method relies on `to_dict` to create a canonical representation
+        of the message, then removes the signature field.
+        """
+        logger.debug("\n[GET_SIGNING_DATA] Creating signing data from to_dict()...")
+
+        # Use the canonical dictionary representation of the message
+        signing_data = self.to_dict()
+
+        # The signature itself must not be part of the data used to generate the signature
+        if 'signature' in signing_data:
+            del signing_data['signature']
+            logger.debug("[GET_SIGNING_DATA] Removed 'signature' field for signing.")
+
+        # Log the final signing data for debugging
+        logger.debug("\n[GET_SIGNING_DATA] Final signing data structure (before JSON serialization):")
+        for key, value in signing_data.items():
+            logger.debug(f"[GET_SIGNING_DATA]   {key}: {value!r} (type: {type(value).__name__})")
+
+        # Log the exact JSON string that will be signed for deeper debugging
+        try:
+            # Use the same JSON serialization as in the sign() method
+            json_str = json.dumps(
+                signing_data,
+                sort_keys=True,
+                ensure_ascii=False,
+                separators=(',', ':'),
+                default=str
+            )
+            
+            # Log the JSON string and its bytes representation
+            logger.debug("\n[GET_SIGNING_DATA] JSON string to be signed:")
+            logger.debug(f"[GET_SIGNING_DATA]   {json_str}")
+            
+            # Log the exact bytes that will be hashed
+            json_bytes = json_str.encode('utf-8')
+            logger.debug("\n[GET_SIGNING_DATA] Bytes to be hashed (hex):")
+            logger.debug(f"[GET_SIGNING_DATA]   {json_bytes.hex()}")
+            
+            # Log the HMAC hash for verification
+            if hasattr(self, '_last_secret_key'):
+                import hmac
+                import hashlib
+                hmac_obj = hmac.new(self._last_secret_key, json_bytes, hashlib.sha256)
+                expected_signature = hmac_obj.hexdigest()
+                logger.debug("\n[GET_SIGNING_DATA] Expected HMAC-SHA256 signature:")
+                logger.debug(f"[GET_SIGNING_DATA]   {expected_signature}")
+                
+                if hasattr(self, 'signature') and self.signature:
+                    logger.debug("\n[GET_SIGNING_DATA] Current message signature:")
+                    logger.debug(f"[GET_SIGNING_DATA]   {self.signature}")
+                    
+                    # Compare signatures byte by byte
+                    if len(expected_signature) != len(self.signature):
+                        logger.warning("[GET_SIGNING_DATA] Signature length mismatch!")
+                        logger.warning(f"[GET_SIGNING_DATA]   Expected length: {len(expected_signature)}")
+                        logger.warning(f"[GET_SIGNING_DATA]   Actual length: {len(self.signature)}")
+                    else:
+                        # Find the first position where signatures differ
+                        for i, (e, a) in enumerate(zip(expected_signature, self.signature)):
+                            if e != a:
+                                logger.warning(f"[GET_SIGNING_DATA] First mismatch at position {i}:")
+                                logger.warning(f"[GET_SIGNING_DATA]   Expected: '{e}' (0x{ord(e):02x})")
+                                logger.warning(f"[GET_SIGNING_DATA]   Actual:   '{a}' (0x{ord(a):02x})")
+                                break
+                        else:
+                            logger.debug("[GET_SIGNING_DATA] Signatures match!")
+            
+        except Exception as e:
+            logger.error(f"[GET_SIGNING_DATA] Error serializing signing data: {e}", exc_info=True)
+
+        return signing_data
+        
     def sign(self, secret_key: bytes) -> None:
-        """Sign the message with HMAC."""
+        """Sign the message with HMAC.
+        
+        Args:
+            secret_key: The shared secret key used for HMAC signing
+            
+        Raises:
+            ValueError: If secret_key is not provided or empty
+        """
         if not secret_key:
             raise ValueError("Secret key is required for signing")
             
-        # Create a signable representation of the message
-        sign_data = {
-            'message_type': self.message_type.name,
-            'message_id': self.message_id,
-            'timestamp': self.timestamp,
-            'nonce': self.nonce,
-            'source': self.source,
-            'destination': self.destination,
-            'payload': self.payload
-        }
+        # Store the secret key for debugging (will be used in _get_signing_data)
+        self._last_secret_key = secret_key
+            
+        # Reset any existing signature
+        self.signature = None
+            
+        logger.debug("\n[SIGN] === Starting message signing process ===")
+        logger.debug(f"[SIGN] Message ID: {self.message_id}")
+        logger.debug(f"[SIGN] Message type: {getattr(self.message_type, 'name', str(self.message_type))}")
+        logger.debug(f"[SIGN] Message type class: {self.message_type.__class__.__name__}")
+        if hasattr(self.message_type, 'name'):
+            logger.debug(f"[SIGN] Message type name: {self.message_type.name!r}")
+        if hasattr(self.message_type, 'value'):
+            logger.debug(f"[SIGN] Message type value: {self.message_type.value!r}")
+        logger.debug(f"[SIGN] Secret key (first 8 bytes): {secret_key[:8].hex()}...")
+        logger.debug(f"[SIGN] Current signature (before signing): {self.signature}")
         
-        # Create a deterministic JSON string for signing
-        sign_str = json.dumps(sign_data, sort_keys=True).encode('utf-8')
+        # Log the exact data that will be signed
+        sign_data = self._get_signing_data()
+        logger.debug("\n[SIGN] Data to be signed:")
+        for k, v in sign_data.items():
+            logger.debug(f"[SIGN]   {k}: {v!r} (type: {type(v).__name__})")
         
-        # Generate HMAC signature
-        self.signature = hmac.new(
-            secret_key,
-            sign_str,
-            hashlib.sha256
-        ).hexdigest()
+        # Log the current state of the message
+        logger.debug("\n[SIGN] Current message state:")
+        for field in ['message_type', 'message_id', 'timestamp', 'nonce', 'source', 'destination']:
+            value = getattr(self, field, None)
+            logger.debug(f"[SIGN]   {field}: {value!r} (type: {type(value).__name__})")
+        logger.debug(f"[SIGN]   payload: {getattr(self, 'payload', None)!r}")
+        
+        # Log the exact type of message_type
+        logger.debug(f"[SIGN] message_type class: {self.message_type.__class__.__name__}")
+        logger.debug(f"[SIGN] message_type value: {self.message_type!r}")
+        if hasattr(self.message_type, 'name'):
+            logger.debug(f"[SIGN] message_type.name: {self.message_type.name!r}")
+        if hasattr(self.message_type, 'value'):
+            logger.debug(f"[SIGN] message_type.value: {self.message_type.value!r}")
+        
+        # 1. Get the signable data (already properly serialized)
+        sign_data = self._get_signing_data()
+        
+        # 2. Log the signing data in detail
+        logger.debug("\n[SIGN] === Message Signing Data ===")
+        logger.debug("[SIGN] Raw sign_data (before JSON serialization):")
+        for k, v in sign_data.items():
+            if k == 'payload' and isinstance(v, dict):
+                logger.debug(f"[SIGN]   {k} (dict with {len(v)} items):")
+                for pk, pv in v.items():
+                    logger.debug(f"[SIGN]     {pk}: {pv} (type: {type(pv).__name__})")
+            else:
+                logger.debug(f"[SIGN]   {k}: {v} (type: {type(v).__name__})")
+        
+        # 3. Create the JSON string for signing
+        logger.debug("\n[SIGN] === JSON Serialization ===")
+        
+        # Log the JSON serialization settings
+        logger.debug("[SIGN] JSON serialization settings:")
+        logger.debug("[SIGN]   sort_keys=True")
+        logger.debug("[SIGN]   ensure_ascii=False")
+        logger.debug("[SIGN]   separators=(',', ':')")
+        logger.debug("[SIGN]   default=str")
+        
+        # Convert to JSON string with consistent formatting
+        sign_str = json.dumps(
+            sign_data, 
+            sort_keys=True, 
+            ensure_ascii=False, 
+            separators=(',', ':'),
+            default=str  # Handle any non-serializable types
+        )
+        sign_bytes = sign_str.encode('utf-8')
+        
+        # Log the serialized data
+        logger.debug(f"\n[SIGN] Serialized JSON (length: {len(sign_str)}): {sign_str}")
+        logger.debug(f"[SIGN] UTF-8 bytes (length: {len(sign_bytes)}): {sign_bytes.hex()}")
+        
+        # Log the exact bytes being signed in a readable format
+        logger.debug("\n[SIGN] Raw bytes being signed (hex):")
+        for i in range(0, len(sign_bytes), 16):
+            chunk = sign_bytes[i:i+16]
+            hex_part = ' '.join(f'{b:02x}' for b in chunk)
+            ascii_part = ''.join(chr(b) if 32 <= b <= 126 else '.' for b in chunk)
+            logger.debug(f"[SIGN]   {i:04x}: {hex_part.ljust(47)}  {ascii_part}")
+            
+        # Also log as a continuous hex string for easy comparison
+        logger.debug(f"[SIGN] Continuous hex: {sign_bytes.hex()}")
+        
+        # 4. Generate HMAC signature
+        logger.debug("\n[SIGN] === Signature Generation ===")
+        
+        # Log the key being used (first 8 bytes for security)
+        logger.debug(f"[SIGN] Using secret key (first 8 bytes): {secret_key[:8].hex()}...")
+        
+        # Create HMAC object and generate signature
+        hmac_obj = hmac.new(secret_key, sign_bytes, hashlib.sha256)
+        self.signature = hmac_obj.hexdigest()
+        
+        # 5. Log signature generation details
+        logger.debug(f"[SIGN] HMAC algorithm: {hmac_obj.name}")
+        logger.debug(f"[SIGN] HMAC digest size: {hmac_obj.digest_size} bytes")
+        logger.debug(f"[SIGN] HMAC block size: {hmac_obj.block_size} bytes")
+        logger.debug(f"[SIGN] Generated signature: {self.signature}")
+        
+        # 6. Verify the signature can be verified with the same data
+        logger.debug("\n[SIGN] === Verifying generated signature ===")
+        test_hmac = hmac.new(secret_key, sign_bytes, hashlib.sha256)
+        test_signature = test_hmac.hexdigest()
+        
+        logger.debug(f"[SIGN] Test signature: {test_signature}")
+        logger.debug(f"[SIGN] Stored signature: {self.signature}")
+        
+        if test_signature != self.signature:
+            logger.error("\n[SIGN] !!! SIGNATURE VALIDATION FAILED !!!")
+            logger.error(f"[SIGN] Expected: {test_signature}")
+            logger.error(f"[SIGN] Actual:   {self.signature}")
+            
+            # Find the first position where signatures differ
+            for i, (a, b) in enumerate(zip(test_signature, self.signature)):
+                if a != b:
+                    logger.error(f"[SIGN] First mismatch at position {i}: expected '{a}' (0x{ord(a):02x}), got '{b}' (0x{ord(b):02x})")
+                    break
+        else:
+            logger.debug("[SIGN] Signature self-test passed")
     
     def verify_signature(self, secret_key: bytes) -> bool:
-        """Verify the message signature."""
-        if not self.signature:
-            return False
-            
-        # Create a copy of the message without the signature
-        temp_signature = self.signature
-        self.signature = None
-        
+        """Verify the message signature.
+
+        Args:
+            secret_key: The shared secret key used for HMAC signing
+
+        Returns:
+            bool: True if the signature is valid, False otherwise
+        """
         try:
-            # Generate expected signature
-            self.sign(secret_key)
-            return hmac.compare_digest(temp_signature, self.signature)
-        finally:
-            # Restore the original signature
-            self.signature = temp_signature
+            if not self.signature:
+                logger.warning("[VERIFY] No signature present to verify")
+                return False
+
+            if not secret_key:
+                logger.warning("[VERIFY] No secret key provided for verification")
+                return False
+                
+            # Log the secret key being used (first 8 bytes for security)
+            logger.debug(f"[VERIFY] Using secret key (first 8 bytes): {secret_key[:8].hex() if secret_key else 'None'}...")
+
+            # Get the data that was used for signing
+            sign_data = self._get_signing_data()
+            
+            logger.debug("\n[VERIFY] Data used for verification:")
+            for k, v in sign_data.items():
+                logger.debug(f"[VERIFY]   {k}: {v!r} (type: {type(v).__name__})")
+
+            # Create the exact same JSON string as in sign()
+            sign_str = json.dumps(
+                sign_data,
+                sort_keys=True,
+                ensure_ascii=False,
+                separators=(',', ':'),
+                default=str
+            )
+            sign_bytes = sign_str.encode('utf-8')
+            
+            # Log the exact bytes being verified
+            logger.debug("\n[VERIFY] JSON string being verified:")
+            logger.debug(f"[VERIFY]   {sign_str}")
+            logger.debug("\n[VERIFY] Bytes being hashed (hex):")
+            logger.debug(f"[VERIFY]   {sign_bytes.hex()}")
+
+            # Generate the expected HMAC signature
+            hmac_obj = hmac.new(secret_key, sign_bytes, hashlib.sha256)
+            expected_signature = hmac_obj.hexdigest()
+            
+            # Log the expected signature
+            logger.debug("\n[VERIFY] Expected HMAC-SHA256 signature:")
+            logger.debug(f"[VERIFY]   {expected_signature}")
+            logger.debug(f"[VERIFY] Current signature: {self.signature}")
+
+            # Compare signatures using a constant-time comparison.
+            actual_signature = self.signature or ""
+            is_valid = hmac.compare_digest(expected_signature, actual_signature)
+
+            if not is_valid:
+                logger.warning("\n[VERIFY] SIGNATURE MISMATCH!")
+                logger.warning(f"[VERIFY]   - Expected: {expected_signature}")
+                logger.warning(f"[VERIFY]   - Actual:   {actual_signature}")
+                
+                # Check signature length
+                if len(expected_signature) != len(actual_signature):
+                    logger.warning(f"[VERIFY] Signature length mismatch: expected {len(expected_signature)}, got {len(actual_signature)}")
+                else:
+                    # Find the first position where signatures differ
+                    for i, (e, a) in enumerate(zip(expected_signature, actual_signature)):
+                        if e != a:
+                            logger.warning(f"[VERIFY] First mismatch at position {i}:")
+                            logger.warning(f"[VERIFY]   Expected: '{e}' (0x{ord(e):02x})")
+                            logger.warning(f"[VERIFY]   Actual:   '{a}' (0x{ord(a):02x})")
+                            break
+                            
+                # Check if the issue is with the secret key
+                if hasattr(self, '_last_secret_key'):
+                    if self._last_secret_key != secret_key:
+                        logger.warning("[VERIFY] Secret key mismatch between signing and verification!")
+                        logger.warning(f"[VERIFY]   Signing key (first 8): {self._last_secret_key[:8].hex() if self._last_secret_key else 'None'}...")
+                        logger.warning(f"[VERIFY]   Verify key (first 8):  {secret_key[:8].hex() if secret_key else 'None'}...")
+            else:
+                logger.debug("[VERIFY] Signature verification succeeded.")
+
+            return is_valid
+
+        except Exception as e:
+            logger.error(f"[VERIFY] An unexpected error occurred during signature verification: {e}", exc_info=True)
+            return False
     
     @classmethod
     def from_bytes(cls, data: bytes) -> Message:
         """Deserialize message from bytes."""
         try:
-            msg_dict = json.loads(data.decode('utf-8'))
-            return cls.from_dict(msg_dict)
+            logger.debug(f"[DESERIALIZE] Raw bytes (hex): {data.hex()}")
+            json_str = data.decode('utf-8')
+            logger.debug(f"[DESERIALIZE] JSON string: {json_str}")
+            msg_dict = json.loads(json_str)
+            logger.debug(f"[DESERIALIZE] Parsed dict: {msg_dict}")
+            message = cls.from_dict(msg_dict)
+            logger.debug(f"[DESERIALIZE] Created message: {message}")
+            logger.debug(f"[DESERIALIZE] Message details: {message.__dict__}")
+            return message
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            logger.error(f"Failed to deserialize message: {e}")
+            logger.error(f"[DESERIALIZE] Failed to deserialize message: {e}")
+            logger.error(f"[DESERIALIZE] Data (hex): {data.hex() if data else 'None'}")
+            logger.error(f"[DESERIALIZE] Data (str): {data.decode('utf-8', errors='replace') if data else 'None'}")
             raise ValueError("Invalid message format") from e
     
     @classmethod
@@ -128,24 +394,137 @@ class Message:
         if not isinstance(data, dict):
             raise ValueError("Message data must be a dictionary")
             
-        # Convert message_type from string to enum if needed
-        if isinstance(data.get('message_type'), str):
-            data['message_type'] = MessageType[data['message_type']]
-        elif isinstance(data.get('message_type'), int):
-            data['message_type'] = MessageType(data['message_type'])
+        logger.debug(f"[FROM_DICT] Input data: {data}")
             
-        return cls(**data)
+        # Make a deep copy to avoid modifying the input
+        import copy
+        data = copy.deepcopy(data)
+        
+        # Extract and remove signature before processing other fields
+        signature = data.pop('signature', None)
+        
+        # Handle message_type conversion first - ensure it's a MessageType enum
+        if 'message_type' in data and data['message_type'] is not None:
+            try:
+                message_type = data['message_type']
+                
+                if isinstance(message_type, MessageType):
+                    # Already a MessageType, use as is
+                    data['message_type'] = message_type
+                elif isinstance(message_type, str):
+                    # Handle string message types (e.g., 'AUTH_REQUEST')
+                    if message_type.isdigit():
+                        # Handle case where it's a string number (e.g., '1' for HEARTBEAT)
+                        data['message_type'] = MessageType(int(message_type))
+                    else:
+                        # Handle string name (e.g., 'HEARTBEAT')
+                        data['message_type'] = MessageType[message_type]
+                    logger.debug(f"[FROM_DICT] Converted string '{message_type}' to MessageType: {data['message_type']}")
+                elif isinstance(message_type, int):
+                    # Handle integer message types (e.g., 11 for HEARTBEAT)
+                    data['message_type'] = MessageType(message_type)
+                    logger.debug(f"[FROM_DICT] Converted int {message_type} to MessageType: {data['message_type']}")
+                else:
+                    raise ValueError(f"Unsupported message_type type: {type(message_type).__name__}")
+                
+                logger.debug(f"[FROM_DICT] Final message_type: {data['message_type']} (type: {type(data['message_type']).__name__})")
+                
+            except (KeyError, ValueError) as e:
+                logger.error(f"[FROM_DICT] Failed to convert message_type: {e}")
+                logger.error(f"[FROM_DICT] message_type value: {data.get('message_type')}")
+                logger.error(f"[FROM_DICT] Available message types: {[t.name for t in MessageType]}")
+                raise ValueError(f"Invalid message_type: {data.get('message_type')}") from e
+        
+        # Ensure payload is always a dictionary
+        if 'payload' in data and not isinstance(data['payload'], dict):
+            logger.warning(f"[FROM_DICT] Payload is not a dict: {data['payload']}. Converting to empty dict.")
+            data['payload'] = {}
+        
+        # Create a new message with the processed data
+        try:
+            # Only include fields that are part of the Message class
+            message_fields = {}
+            for field_name in cls.__annotations__:
+                if field_name in data:
+                    message_fields[field_name] = data[field_name]
+            
+            # Create the message instance
+            message = cls(**message_fields)
+            
+            # Set the signature if it was provided
+            if signature is not None:
+                message.signature = signature
+                
+            # Debug log the final message details
+            logger.debug(f"[FROM_DICT] Successfully created message with ID: {message.message_id}")
+            logger.debug(f"[FROM_DICT] Message type: {message.message_type.name} (type: {type(message.message_type).__name__})")
+            logger.debug(f"[FROM_DICT] Has signature: {message.signature is not None}")
+            
+            return message
+            
+        except Exception as e:
+            logger.error(f"[FROM_DICT] Failed to create Message: {e}")
+            logger.error(f"[FROM_DICT] Message fields: {data}")
+            logger.error(f"[FROM_DICT] Exception type: {type(e).__name__}")
+            raise
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert message to dictionary."""
-        data = asdict(self)
-        # Convert enum to string for JSON serialization
-        data['message_type'] = self.message_type.name
+        """Convert message to a canonical dictionary representation.
+        
+        This method ensures consistent serialization of the message for signing and transmission.
+        The message_type is always converted to its string name for consistency.
+        """
+        logger.debug("[TO_DICT] Starting message serialization")
+
+        # Create a shallow copy of the message's __dict__ to avoid modifying the original
+        data = {k: v for k, v in self.__dict__.items() if not k.startswith('_')}
+        
+        # Ensure consistent message_type handling
+        if 'message_type' in data and data['message_type'] is not None:
+            try:
+                # Convert message_type to its string name representation
+                if isinstance(data['message_type'], MessageType):
+                    data['message_type'] = data['message_type'].name
+                elif isinstance(data['message_type'], str):
+                    # If it's already a string, ensure it matches the enum name
+                    try:
+                        data['message_type'] = MessageType[data['message_type']].name
+                    except KeyError:
+                        # If not a valid enum name, keep as is but log a warning
+                        logger.warning(f"[TO_DICT] Unknown message type: {data['message_type']}")
+                elif isinstance(data['message_type'], int):
+                    # Convert from numeric value to name
+                    data['message_type'] = MessageType(data['message_type']).name
+                
+                logger.debug(f"[TO_DICT] Set message_type to: {data['message_type']}")
+                
+            except (KeyError, ValueError) as e:
+                logger.error(f"[TO_DICT] Invalid message_type: {data['message_type']} - {e}")
+                # Keep the original value but log the error
+                data['message_type'] = str(data['message_type'])
+
+        # Ensure payload is always a dictionary
+        if 'payload' in data and not isinstance(data['payload'], dict):
+            logger.warning(f"[TO_DICT] Payload is not a dict: {data['payload']}. Converting to empty dict.")
+            data['payload'] = {}
+
+        # Remove fields with None values to create a compact representation
+        # This ensures consistent serialization between sender and receiver
+        data = {k: v for k, v in data.items() if v is not None}
+
+        # Log the final serialized data for debugging
+        logger.debug(f"[TO_DICT] Final serialized message: {data}")
         return data
     
     def to_bytes(self) -> bytes:
         """Serialize message to bytes."""
-        return json.dumps(self.to_dict()).encode('utf-8')
+        msg_dict = self.to_dict()
+        logger.debug(f"[SERIALIZE] Message dict: {msg_dict}")
+        json_str = json.dumps(msg_dict)
+        logger.debug(f"[SERIALIZE] JSON string: {json_str}")
+        data = json_str.encode('utf-8')
+        logger.debug(f"[SERIALIZE] Bytes (hex): {data.hex()}")
+        return data
     
     def __str__(self) -> str:
         """String representation of the message."""
@@ -237,49 +616,65 @@ class ProtocolHandler:
         Returns:
             Tuple of (is_valid, reason)
         """
-        if not isinstance(message, Message):
-            return False, "Invalid message type"
-            
-        # Basic validation
-        required_fields = [
-            ('message_type', 'Missing message type'),
-            ('message_id', 'Missing message ID'),
-            ('timestamp', 'Missing timestamp'),
-            ('nonce', 'Missing nonce')
-        ]
+        logger.debug(f"[VALIDATE] Starting validation for message: {message.message_id}")
+        logger.debug(f"[VALIDATE] Message details: {message.__dict__}")
         
-        for field, error in required_fields:
-            if not getattr(message, field, None):
-                return False, error
-        
-        # Validate message type
-        try:
-            if not isinstance(message.message_type, MessageType):
-                message.message_type = MessageType[message.message_type]
-        except (KeyError, TypeError):
-            return False, f"Invalid message type: {message.message_type}"
-        
-        # Validate timestamp format and check for expiration
-        try:
-            msg_time = datetime.fromisoformat(message.timestamp)
-            if (datetime.utcnow() - msg_time) > timedelta(seconds=MESSAGE_TTL):
-                return False, "Message expired"
-        except (ValueError, TypeError):
-            return False, "Invalid timestamp format"
-            
-        # Check for replay attacks
-        if check_replay:
+        # Clean up old nonces periodically
+        if time.time() - self._nonce_cleanup_time > 300:  # Cleanup every 5 minutes
             self._cleanup_old_nonces()
-            if message.nonce in self._seen_nonces:
-                return False, "Possible replay attack detected"
-            self._seen_nonces.add(message.nonce)
+            self._nonce_cleanup_time = time.time()
         
-        # Verify message signature if required
+        # Check and convert message type
+        if isinstance(message.message_type, str):
+            try:
+                message.message_type = MessageType[message.message_type]
+                logger.debug(f"[VALIDATE] Converted message type from string to enum: {message.message_type}")
+            except KeyError:
+                reason = f"Invalid message type string: {message.message_type}"
+                logger.warning(f"[VALIDATE] {reason}")
+                return False, reason
+        elif not isinstance(message.message_type, MessageType):
+            reason = f"Invalid message type: {type(message.message_type).__name__}"
+            logger.warning(f"[VALIDATE] {reason}")
+            return False, reason
+            
+        # Check required fields
+        missing_fields = [
+            field for field in ['message_id', 'timestamp', 'nonce'] 
+            if not getattr(message, field, None)
+        ]
+        if missing_fields:
+            reason = f"Missing required fields: {', '.join(missing_fields)}"
+            logger.warning(f"[VALIDATE] {reason}")
+            return False, reason
+            
+        # Check if message is expired
+        if message.is_expired():
+            reason = f"Message expired (timestamp: {message.timestamp})"
+            logger.warning(f"[VALIDATE] {reason}")
+            return False, reason
+            
+        # Verify signature if required
         if check_signature and self.secret_key:
+            logger.debug("[VALIDATE] Checking message signature...")
             if not message.signature:
-                return False, "Message not signed"
+                reason = "Message not signed"
+                logger.warning(f"[VALIDATE] {reason}")
+                return False, reason
                 
             if not message.verify_signature(self.secret_key):
-                return False, "Invalid message signature"
+                reason = "Invalid message signature"
+                logger.warning(f"[VALIDATE] {reason}")
+                return False, reason
+        
+        # Only add nonce to seen_nonces after successful signature verification
+        if check_replay:
+            if message.nonce in self._seen_nonces:
+                reason = f"Possible replay attack detected (nonce: {message.nonce})"
+                logger.warning(f"[VALIDATE] {reason}")
+                return False, reason
+            # Add nonce to seen_nonces after successful validation
+            self._seen_nonces.add(message.nonce)
+            logger.debug(f"[VALIDATE] Added nonce to seen_nonces: {message.nonce}")
         
         return True, ""
