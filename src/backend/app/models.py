@@ -3,6 +3,9 @@ from sqlalchemy.orm import relationship
 from .database import Base
 from datetime import datetime
 
+# Import role_permissions from permission.py
+from app.models.permission import role_permissions
+
 # Association tables
 user_roles = Table('user_roles', Base.metadata,
     Column('user_id', Integer, ForeignKey('users.id')),
@@ -34,7 +37,7 @@ class Role(Base):
     
     # Relationships
     users = relationship("User", secondary=user_roles, back_populates="roles")
-    permissions = relationship("Permission", secondary="role_permissions", back_populates="roles")
+    permissions = relationship("Permission", secondary=role_permissions, back_populates="roles")
 
 class Permission(Base):
     __tablename__ = "permissions"
@@ -44,13 +47,9 @@ class Permission(Base):
     description = Column(String)
     
     # Relationships
-    roles = relationship("Role", secondary="role_permissions", back_populates="permissions")
+    roles = relationship("Role", secondary=role_permissions, back_populates="permissions")
 
-role_permissions = Table(
-    'role_permissions', Base.metadata,
-    Column('role_id', Integer, ForeignKey('roles.id')),
-    Column('permission_id', Integer, ForeignKey('permissions.id'))
-)
+# role_permissions is imported at the top of the file
 
 class Company(Base):
     __tablename__ = "companies"

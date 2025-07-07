@@ -1,9 +1,108 @@
 {
+  "name": "trosyn-ai",
+  "version": "1.0.0",
+  "description": "Trosyn AI Editor - A Notion-style rich text editor with AI capabilities",
+  "main": "./dist/main/cjs-entry.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:renderer": "vite build",
+    "build": "rm -rf dist && npm run build:main && npm run build:renderer",
+    "preview": "vite preview",
+    "start": "electron .",
+    "dev:electron": "concurrently -k \"vite --port 3001\" \"wait-on http://localhost:3001 && cross-env NODE_ENV=development electron . --no-modules\"",
+    "electron:build": "npm run build && electron-builder",
+    "test": "node scripts/run-test.js"
+  },
+  "keywords": [
+    "editor",
+    "ai",
+    "electron",
+    "vue",
+    "typescript"
+  ],
+  "author": "Trosyn AI Team",
+  "license": "MIT",
+  "type": "commonjs",
+  "exports": {
+    ".": {
+      "import": "./dist/main/index.js",
+      "types": "./dist/main/index.d.ts"
+    }
+  },
   "devDependencies": {
+    "@types/chai": "^5.2.2",
+    "@types/electron": "^1.4.38",
+    "@types/electron-squirrel-startup": "^1.0.2",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^20.19.4",
+    "@vitejs/plugin-vue": "^5.0.0",
+    "@vue/compiler-sfc": "^3.4.0",
+    "@vue/runtime-dom": "^3.5.17",
+    "chai": "^5.2.0",
+    "concurrently": "^8.2.0",
+    "cross-env": "^7.0.3",
     "cypress": "^14.5.0",
     "cypress-axe": "^1.6.0",
     "cypress-file-upload": "^5.0.8",
     "cypress-real-events": "^1.14.0",
-    "cypress-wait-until": "^3.0.2"
+    "cypress-wait-until": "^3.0.2",
+    "electron-builder": "^24.0.0",
+    "electron-reloader": "^1.2.3",
+    "electron-squirrel-startup": "^1.0.1",
+    "mocha": "^11.7.1",
+    "terser": "^5.43.1",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.0.0",
+    "vite": "^5.0.0",
+    "vite-plugin-electron": "^0.14.0",
+    "wait-on": "^7.2.0"
+  },
+  "dependencies": {
+    "@editorjs/checklist": "^1.6.0",
+    "@editorjs/code": "^2.9.3",
+    "@editorjs/editorjs": "^2.30.8",
+    "@editorjs/header": "^2.8.8",
+    "@editorjs/image": "^2.8.0",
+    "@editorjs/list": "^1.10.0",
+    "@editorjs/quote": "^2.7.6",
+    "@editorjs/table": "^2.4.5",
+    "@types/better-sqlite3": "^7.6.13",
+    "better-sqlite3": "^12.2.0",
+    "electron": "24.8.8",
+    "notistack": "^3.0.2",
+    "pinia": "^3.0.3",
+    "vue": "^3.3.0"
+  },
+  "build": {
+    "appId": "com.trosyn.editor",
+    "productName": "Trosyn AI Editor",
+    "directories": {
+      "output": "release/${version}",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "icon": "build/icon.icns"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "build/icon.png"
+    }
   }
 }

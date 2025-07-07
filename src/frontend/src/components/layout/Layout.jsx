@@ -52,6 +52,12 @@ const Layout = () => {
           >
             Memory
           </Link>
+          <Link 
+            to="/ai-assistant" 
+            className={location.pathname === '/ai-assistant' ? 'active' : ''}
+          >
+            AI Assistant
+          </Link>
         </nav>
         <div className="user-menu">
           <span className="username">{currentUser?.username}</span>

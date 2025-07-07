@@ -68,10 +68,10 @@ class Settings(BaseSettings):
         extra="ignore"
     )
 
+# Global settings instance
+settings = Settings()
+
 # Create data directories if they don't exist
 os.makedirs(settings.DATA_DIR, exist_ok=True)
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 os.makedirs(Path(settings.MODEL_PATH).parent, exist_ok=True)
-
-# Global settings instance
-settings = Settings()

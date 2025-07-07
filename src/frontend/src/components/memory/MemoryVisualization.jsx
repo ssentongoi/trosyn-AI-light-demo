@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useMemory } from '../../contexts/MemoryContext';
+import memoryService from '../../services/memoryService';
 import {
   Box,
   Card,
@@ -17,6 +18,10 @@ import {
   TableRow,
   Typography,
   useTheme,
+  Alert,
+  Snackbar,
+  CircularProgress,
+  Button
 } from '@mui/material';
 import { 
   PieChart, 
@@ -38,37 +43,85 @@ const COLORS = [
 ];
 
 const MemoryVisualization = () => {
-  const { context, isLoading } = useMemory();
+  const { context, isLoading, error: contextError } = useMemory();
   const theme = useTheme();
+  const [interactions, setInteractions] = useState([]);
+  const [sessions, setSessions] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
 
-  if (isLoading && !context) {
-    return <LinearProgress />;
+  // Fetch memory data
+  const fetchMemoryData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Fetch recent interactions
+      const interactionsData = await memoryService.getInteractions({
+        limit: 100,
+        sort: 'timestamp:desc'
+      });
+      setInteractions(interactionsData?.data || []);
+      
+      // Fetch recent sessions
+      const sessionsData = await memoryService.getSessions({
+        limit: 10,
+        sort: 'created_at:desc'
+      });
+      setSessions(sessionsData?.data || []);
+      
+      // Fetch memory statistics
+      const statsData = await memoryService.getStatistics();
+      setStats(statsData);
+      
+    } catch (err) {
+      console.error('Error fetching memory data:', err);
+      setError('Failed to load memory data. Please try again.');
+      setSnackbarOpen(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchMemoryData();
+  }, [fetchMemoryData]);
+
+  if (isLoading || loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+        <CircularProgress />
+      </Box>
+    );
   }
 
   // Prepare data for visualization
   const getInteractionStats = () => {
-    if (!context?.interactions?.length) {
+    if (!interactions?.length) {
       return [];
     }
 
     // Group by interaction type or source
-    const stats = context.interactions.reduce((acc, interaction) => {
+    const interactionStats = interactions.reduce((acc, interaction) => {
       const source = interaction.metadata?.source || 'unknown';
       acc[source] = (acc[source] || 0) + 1;
       return acc;
     }, {});
 
-    return Object.entries(stats).map(([name, count]) => ({
+    return Object.entries(interactionStats).map(([name, count]) => ({
       name,
       count,
-      percentage: (count / context.interactions.length) * 100
+      percentage: (count / interactions.length) * 100
     }));
   };
 
   const getContextStats = () => {
     if (!context) return [];
     
-    return Object.entries(context.context || {}).map(([key, value]) => ({
+    const contextData = context.context || {};
+    return Object.entries(contextData).map(([key, value]) => ({
       name: key,
       value: typeof value === 'object' ? JSON.stringify(value).length : String(value).length,
       type: typeof value
@@ -78,11 +131,118 @@ const MemoryVisualization = () => {
   const interactionStats = getInteractionStats();
   const contextStats = getContextStats();
 
+  const handleCloseSnackbar = () => {
+    setSnackbarOpen(false);
+  };
+
+  const handleRetry = () => {
+    setError(null);
+    setLoading(true);
+    // The useEffect will automatically refetch the data
+  };
+
+  if (error) {
+    return (
+      <Box sx={{ maxWidth: 1200, mx: 'auto', p: 3, textAlign: 'center' }}>
+        <Typography variant="h5" color="error" gutterBottom>
+          {error}
+        </Typography>
+        <Button 
+          variant="contained" 
+          color="primary" 
+          onClick={handleRetry}
+          startIcon={loading ? <CircularProgress size={20} color="inherit" /> : null}
+          disabled={loading}
+        >
+          {loading ? 'Loading...' : 'Retry'}
+        </Button>
+      </Box>
+    );
+  }
+
+  // Prepare data for visualization
+  const getInteractionStats = () => {
+    if (!interactions?.length) {
+      return [];
+    }
+
+    // Group by interaction type or source
+    const interactionStats = interactions.reduce((acc, interaction) => {
+      const source = interaction.metadata?.source || 'unknown';
+      acc[source] = (acc[source] || 0) + 1;
+      return acc;
+    }, {});
+
+    return Object.entries(interactionStats).map(([name, count]) => ({
+      name,
+      count,
+      percentage: (count / interactions.length) * 100
+    }));
+  };
+
+  const getContextStats = () => {
+    if (!context) return [];
+    
+    const contextData = context.context || {};
+    return Object.entries(contextData).map(([key, value]) => ({
+      name: key,
+      value: typeof value === 'object' ? JSON.stringify(value).length : String(value).length,
+      type: typeof value
+    }));
+  };
+
+  const interactionStats = getInteractionStats();
+  const contextStats = getContextStats();
+
+  const handleCloseSnackbar = () => {
+    setSnackbarOpen(false);
+  };
+
+  const handleRetry = () => {
+    setError(null);
+    setLoading(true);
+    // The useEffect will automatically refetch the data
+  };
+
+  if (error) {
+    return (
+      <Box sx={{ maxWidth: 1200, mx: 'auto', p: 3, textAlign: 'center' }}>
+        <Typography variant="h5" color="error" gutterBottom>
+          {error}
+        </Typography>
+        <Button 
+          variant="contained" 
+          color="primary" 
+          onClick={handleRetry}
+          startIcon={loading ? <CircularProgress size={20} color="inherit" /> : null}
+          disabled={loading}
+        >
+          {loading ? 'Loading...' : 'Retry'}
+        </Button>
+      </Box>
+    );
+  }
+
   return (
     <Box sx={{ maxWidth: 1200, mx: 'auto', p: 3 }}>
-      <Typography variant="h4" gutterBottom>
-        Memory Insights
-      </Typography>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography variant="h4">
+          Memory Insights
+        </Typography>
+        {stats && (
+          <Box display="flex" gap={2}>
+            <Typography variant="subtitle1">
+              Total Interactions: <strong>{stats.total_interactions || 0}</strong>
+            </Typography>
+            <Typography variant="subtitle1">
+              Active Sessions: <strong>{stats.active_sessions || 0}</strong>
+            </Typography>
+            <Typography variant="subtitle1">
+              Context Size: <strong>{(stats.context_size / 1024).toFixed(2)} KB</strong>
+            </Typography>
+          </Box>
+        )}
+      </Box>
       
       <Grid container spacing={3}>
         {/* Interaction Stats */}
@@ -182,7 +342,7 @@ const MemoryVisualization = () => {
             <CardHeader title="Recent Interactions" />
             <Divider />
             <CardContent>
-              {context?.interactions?.length > 0 ? (
+              {interactions?.length > 0 ? (
                 <TableContainer component={Paper}>
                   <Table size="small">
                     <TableHead>
@@ -194,8 +354,8 @@ const MemoryVisualization = () => {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {context.interactions
-                        .slice(-5)
+                      {Array.isArray(interactions) && interactions
+                        .slice(0, 5)
                         .map((interaction, index) => (
                           <TableRow key={index}>
                             <TableCell>
@@ -232,4 +392,19 @@ const MemoryVisualization = () => {
   );
 };
 
-export default MemoryVisualization;
+      {/* Error Snackbar */}
+      <Snackbar 
+        open={snackbarOpen} 
+        autoHideDuration={6000} 
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={handleCloseSnackbar} severity="error" sx={{ width: '100%' }}>
+          {error}
+        </Alert>
+      </Snackbar>
+    </Box>
+  );
+};
+
+export default React.memo(MemoryVisualization);

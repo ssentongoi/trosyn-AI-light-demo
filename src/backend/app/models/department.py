@@ -19,3 +19,4 @@ class Department(BaseModel):
     company = relationship("Company", back_populates="departments")
     users = relationship("User", back_populates="department")
     documents = relationship("Document", back_populates="department")
+    requests = relationship("DepartmentRequest", back_populates="department")

@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     # API Settings
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "Trosyn AI"
+    VERSION: str = "1.0.0"
     DEBUG: bool = True  # Set to False in production
     
     # Security

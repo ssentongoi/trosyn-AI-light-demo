@@ -1,22 +1,27 @@
-from sqlalchemy.orm import Session
-from typing import Optional
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from typing import Optional, List
+
 from ..core.security import get_password_hash
 from ..models.user import User as UserModel
 from ..schemas.user import UserCreate, UserInDB, UserUpdate
 
-def get_user(db: Session, user_id: int) -> Optional[UserModel]:
+async def get_user(db: AsyncSession, user_id: int) -> Optional[UserModel]:
     """Get a user by ID"""
-    return db.query(UserModel).filter(UserModel.id == user_id).first()
+    result = await db.execute(select(UserModel).filter(UserModel.id == user_id))
+    return result.scalars().first()
 
-def get_user_by_username(db: Session, username: str) -> Optional[UserModel]:
+async def get_user_by_username(db: AsyncSession, username: str) -> Optional[UserModel]:
     """Get a user by username"""
-    return db.query(UserModel).filter(UserModel.username == username).first()
+    result = await db.execute(select(UserModel).filter(UserModel.username == username))
+    return result.scalars().first()
 
-def get_user_by_email(db: Session, email: str) -> Optional[UserModel]:
+async def get_user_by_email(db: AsyncSession, email: str) -> Optional[UserModel]:
     """Get a user by email"""
-    return db.query(UserModel).filter(UserModel.email == email).first()
+    result = await db.execute(select(UserModel).filter(UserModel.email == email))
+    return result.scalars().first()
 
-def create_user(db: Session, user: UserCreate) -> UserModel:
+async def create_user(db: AsyncSession, user: UserCreate) -> UserModel:
     """Create a new user"""
     hashed_password = get_password_hash(user.password)
     db_user = UserModel(
@@ -27,12 +32,12 @@ def create_user(db: Session, user: UserCreate) -> UserModel:
         is_active=True
     )
     db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
+    await db.commit()
+    await db.refresh(db_user)
     return db_user
 
-def update_user(
-    db: Session, db_user: UserModel, user_update: UserUpdate
+async def update_user(
+    db: AsyncSession, db_user: UserModel, user_update: UserUpdate
 ) -> UserModel:
     """Update a user"""
     update_data = user_update.dict(exclude_unset=True)
@@ -45,15 +50,49 @@ def update_user(
         setattr(db_user, field, value)
     
     db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
+    await db.commit()
+    await db.refresh(db_user)
     return db_user
 
-def delete_user(db: Session, user_id: int) -> UserModel:
+async def delete_user(db: AsyncSession, user_id: int) -> bool:
     """Delete a user"""
-    db_user = get_user(db, user_id=user_id)
+    result = await db.execute(select(UserModel).filter(UserModel.id == user_id))
+    db_user = result.scalars().first()
+    if db_user:
+        await db.delete(db_user)
+        await db.commit()
+        return True
+    return False
+
+async def get_users(
+    db: AsyncSession, 
+    skip: int = 0, 
+    limit: int = 100,
+    is_active: Optional[bool] = None
+) -> List[UserModel]:
+    """Get list of users with optional filtering"""
+    query = select(UserModel)
+    
+    if is_active is not None:
+        query = query.filter(UserModel.is_active == is_active)
+    
+    result = await db.execute(query.offset(skip).limit(limit))
+    return result.scalars().all()
+
+async def update_user_status(
+    db: AsyncSession, 
+    user_id: int, 
+    is_active: bool
+) -> Optional[UserModel]:
+    """Update user's active status"""
+    result = await db.execute(select(UserModel).filter(UserModel.id == user_id))
+    db_user = result.scalars().first()
+    
     if not db_user:
         return None
-    db.delete(db_user)
-    db.commit()
+        
+    db_user.is_active = is_active
+    db.add(db_user)
+    await db.commit()
+    await db.refresh(db_user)
     return db_user

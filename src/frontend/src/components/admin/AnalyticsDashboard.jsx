@@ -6,76 +6,81 @@ import {
   Typography,
   Card,
   CardContent,
-  CardHeader,
-  Divider,
   CircularProgress,
   Alert,
   ToggleButtonGroup,
   ToggleButton,
+  Icon,
 } from '@mui/material';
 import {
-  BarChart,
-  Bar,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import { format, subDays } from 'date-fns';
+import {
+  People as PeopleIcon,
+  Timeline as TimelineIcon,
+  Api as ApiIcon,
+  CheckCircleOutline as CheckCircleOutlineIcon,
+  ArrowUpward as ArrowUpwardIcon,
+  ArrowDownward as ArrowDownwardIcon,
+} from '@mui/icons-material';
+import analyticsService from '../../services/analyticsService';
 
-// Mock data - replace with actual API calls
-const generateMockData = (days = 30) => {
-  const data = [];
-  const now = new Date();
-  
-  for (let i = days; i >= 0; i--) {
-    const date = subDays(now, i);
-    data.push({
-      date: format(date, 'MMM dd'),
-      activeUsers: Math.floor(Math.random() * 100) + 50,
-      newUsers: Math.floor(Math.random() * 20) + 5,
-      apiCalls: Math.floor(Math.random() * 1000) + 500,
-      memoryUsage: Math.floor(Math.random() * 80) + 20,
-    });
-  }
-  
-  return data;
-};
+// --- Reusable Components ---
 
-const userActivityData = [
-  { name: 'Active Users', value: 75 },
-  { name: 'Inactive Users', value: 25 },
-];
+const StatCard = ({ title, value, trend, icon, color }) => (
+  <Card sx={{ height: '100%' }}>
+    <CardContent>
+      <Box display="flex" justifyContent="space-between" alignItems="flex-start">
+        <Box>
+          <Typography variant="subtitle1" color="text.secondary" gutterBottom>
+            {title}
+          </Typography>
+          <Typography variant="h4" component="div" fontWeight="bold">
+            {value}
+          </Typography>
+        </Box>
+        <Icon component={icon} sx={{ fontSize: 40, color: `${color}.main`, opacity: 0.8 }} />
+      </Box>
+      {trend !== undefined && (
+        <Box display="flex" alignItems="center" mt={1} sx={{ color: trend >= 0 ? 'success.main' : 'error.main' }}>
+          {trend >= 0 ? <ArrowUpwardIcon fontSize="small" /> : <ArrowDownwardIcon fontSize="small" />}
+          <Typography variant="body2" sx={{ ml: 0.5 }}>
+            {(trend * 100).toFixed(1)}% vs last month
+          </Typography>
+        </Box>
+      )}
+    </CardContent>
+  </Card>
+);
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
+const ChartContainer = ({ title, children }) => (
+  <Paper sx={{ p: 2, height: '400px' }}>
+    <Typography variant="h6" gutterBottom>{title}</Typography>
+    <ResponsiveContainer width="100%" height="90%">
+      {children}
+    </ResponsiveContainer>
+  </Paper>
+);
+
+const PIE_COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
+
+// --- Main Dashboard Component ---
 
 const AnalyticsDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [timeRange, setTimeRange] = useState('7days');
-  const [startDate, setStartDate] = useState(subDays(new Date(), 30));
-  const [endDate, setEndDate] = useState(new Date());
-  const [chartData, setChartData] = useState([]);
+  const [data, setData] = useState(null);
+  const [timeRange, setTimeRange] = useState('30d');
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        setChartData(generateMockData(timeRange === '7days' ? 7 : 30));
+        const result = await analyticsService.fetchAnalyticsData(timeRange);
+        setData(result);
+        setError(null);
       } catch (err) {
-        setError('Failed to load analytics data');
+        setError('Failed to load analytics data. Please try again later.');
         console.error('Error fetching analytics:', err);
       } finally {
         setLoading(false);
@@ -93,7 +98,7 @@ const AnalyticsDashboard = () => {
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
         <CircularProgress />
       </Box>
     );
@@ -103,183 +108,83 @@ const AnalyticsDashboard = () => {
     return <Alert severity="error">{error}</Alert>;
   }
 
-  // Calculate summary metrics
-  const totalUsers = chartData.reduce((sum, day) => sum + day.activeUsers, 0);
-  const avgDailyUsers = Math.round(totalUsers / chartData.length);
-  const totalApiCalls = chartData.reduce((sum, day) => sum + day.apiCalls, 0);
-  const avgApiCalls = Math.round(totalApiCalls / chartData.length);
+  if (!data) return null;
+
+  const { keyMetrics, timeSeries, userDistribution, apiUsage } = data;
 
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h5" component="h2">
+        <Typography variant="h4" component="h1">
           Analytics Dashboard
         </Typography>
-        <Box display="flex" alignItems="center" gap={2}>
-          <LocalizationProvider dateAdapter={AdapterDateFns}>
-            <DatePicker
-              label="Start Date"
-              value={startDate}
-              onChange={(newValue) => setStartDate(newValue)}
-              maxDate={endDate || new Date()}
-              slotProps={{ textField: { size: 'small' } }}
-            />
-            <DatePicker
-              label="End Date"
-              value={endDate}
-              onChange={(newValue) => setEndDate(newValue)}
-              minDate={startDate}
-              maxDate={new Date()}
-              slotProps={{ textField: { size: 'small' } }}
-            />
-          </LocalizationProvider>
-          <ToggleButtonGroup
-            value={timeRange}
-            exclusive
-            onChange={handleTimeRangeChange}
-            size="small"
-          >
-            <ToggleButton value="7days">7 Days</ToggleButton>
-            <ToggleButton value="30days">30 Days</ToggleButton>
-            <ToggleButton value="custom">Custom</ToggleButton>
-          </ToggleButtonGroup>
-        </Box>
+        <ToggleButtonGroup
+          value={timeRange}
+          exclusive
+          onChange={handleTimeRangeChange}
+          aria-label="time range"
+        >
+          <ToggleButton value="7d" aria-label="7 days">7D</ToggleButton>
+          <ToggleButton value="30d" aria-label="30 days">30D</ToggleButton>
+          <ToggleButton value="90d" aria-label="90 days">90D</ToggleButton>
+        </ToggleButtonGroup>
       </Box>
 
-      {/* Summary Cards */}
+      {/* Key Metrics */}
       <Grid container spacing={3} mb={3}>
         <Grid item xs={12} sm={6} md={3}>
-          <Card elevation={3}>
-            <CardContent>
-              <Typography color="textSecondary" gutterBottom>
-                Total Active Users
-              </Typography>
-              <Typography variant="h4">{totalUsers}</Typography>
-              <Typography variant="caption" color="textSecondary">
-                {avgDailyUsers} avg. daily users
-              </Typography>
-            </CardContent>
-          </Card>
+          <StatCard title="Total Users" value={keyMetrics.totalUsers.value} trend={keyMetrics.totalUsers.trend} icon={PeopleIcon} color="primary" />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Card elevation={3}>
-            <CardContent>
-              <Typography color="textSecondary" gutterBottom>
-                API Requests
-              </Typography>
-              <Typography variant="h4">{totalApiCalls.toLocaleString()}</Typography>
-              <Typography variant="caption" color="textSecondary">
-                {avgApiCalls.toLocaleString()} avg. daily
-              </Typography>
-            </CardContent>
-          </Card>
+          <StatCard title="Active Sessions" value={keyMetrics.activeSessions.value} trend={keyMetrics.activeSessions.trend} icon={TimelineIcon} color="success" />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Card elevation={3}>
-            <CardContent>
-              <Typography color="textSecondary" gutterBottom>
-                Memory Usage
-              </Typography>
-              <Typography variant="h4">
-                {Math.round(
-                  chartData.reduce((sum, day) => sum + day.memoryUsage, 0) / chartData.length
-                )}
-                %
-              </Typography>
-              <Typography variant="caption" color="textSecondary">
-                Average utilization
-              </Typography>
-            </CardContent>
-          </Card>
+          <StatCard title="API Success Rate" value={`${keyMetrics.apiSuccessRate.value}%`} trend={keyMetrics.apiSuccessRate.trend} icon={ApiIcon} color="warning" />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Card elevation={3}>
-            <CardContent>
-              <Typography color="textSecondary" gutterBottom>
-                New Users (7d)
-              </Typography>
-              <Typography variant="h4">
-                {chartData
-                  .slice(-7)
-                  .reduce((sum, day) => sum + day.newUsers, 0)}
-              </Typography>
-              <Typography variant="caption" color="textSecondary">
-                {Math.round(
-                  chartData.slice(-7).reduce((sum, day) => sum + day.newUsers, 0) / 7
-                )}{' '}
-                avg. daily
-              </Typography>
-            </CardContent>
-          </Card>
+          <StatCard title="System Uptime" value={`${keyMetrics.systemUptime.value}%`} trend={keyMetrics.systemUptime.trend} icon={CheckCircleOutlineIcon} color="info" />
         </Grid>
       </Grid>
 
       {/* Charts */}
       <Grid container spacing={3}>
-        <Grid item xs={12} md={8}>
-          <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              User Activity
-            </Typography>
-            <Divider sx={{ mb: 2 }} />
-            <Box height={400}>
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" />
-                  <YAxis yAxisId="left" />
-                  <YAxis yAxisId="right" orientation="right" />
-                  <Tooltip />
-                  <Legend />
-                  <Line
-                    yAxisId="left"
-                    type="monotone"
-                    dataKey="activeUsers"
-                    name="Active Users"
-                    stroke="#8884d8"
-                    activeDot={{ r: 8 }}
-                  />
-                  <Line
-                    yAxisId="right"
-                    type="monotone"
-                    dataKey="apiCalls"
-                    name="API Calls"
-                    stroke="#82ca9d"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </Box>
-          </Paper>
+        <Grid item xs={12} lg={8}>
+          <ChartContainer title="User Activity Over Time">
+            <LineChart data={timeSeries}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="date" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Line type="monotone" dataKey="activeUsers" name="Active Users" stroke="#8884d8" />
+              <Line type="monotone" dataKey="newSignups" name="New Signups" stroke="#82ca9d" />
+            </LineChart>
+          </ChartContainer>
         </Grid>
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 2, height: '100%' }}>
-            <Typography variant="h6" gutterBottom>
-              User Distribution
-            </Typography>
-            <Divider sx={{ mb: 2 }} />
-            <Box height={400}>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={userActivityData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                    outerRadius={120}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {userActivityData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </Box>
-          </Paper>
+        <Grid item xs={12} lg={4}>
+          <ChartContainer title="User Role Distribution">
+            <PieChart>
+              <Pie data={userDistribution} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} fill="#8884d8" label>
+                {userDistribution.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip />
+              <Legend />
+            </PieChart>
+          </ChartContainer>
+        </Grid>
+        <Grid item xs={12}>
+          <ChartContainer title="API Call Volume">
+            <BarChart data={apiUsage}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="endpoint" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Bar dataKey="calls" fill="#82ca9d" />
+            </BarChart>
+          </ChartContainer>
         </Grid>
       </Grid>
     </Box>

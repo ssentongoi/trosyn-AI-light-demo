@@ -228,20 +228,61 @@ class TCPSyncServer:
             'cipher': cipher[0] if ssl_object and (cipher := ssl_object.cipher()) else None
         }
         try:
-            while self.running:
-                # Read message length (4 bytes)
-                header = await reader.readexactly(4)
-                if not header:
-                    break # Connection closed cleanly by peer
+            async def _handle_connection(self, reader, writer):
+                client_addr = writer.get_extra_info('peername')
+                logging.info(f"New connection from {client_addr}")
                 
-                msg_length = struct.unpack('>I', header)[0]
-                
-                # Read message data
-                data = await reader.readexactly(msg_length)
-                
-                # Process the message
-                await self._process_message(data, client_id)
-                
+                try:
+                    while True:
+                        # Diagnostic Step 1: Log raw data
+                        raw_data = await reader.read(4096) # Read a chunk of data
+                        if not raw_data:
+                            logging.info(f"Connection closed by {client_addr}")
+                            break
+                        
+                        logging.debug(f"RAW DATA from {client_addr}: {raw_data!r}")
+
+                        # We need to feed the raw data back into a stream for the protocol reader
+                        # This is a bit of a hack for diagnostics. A better way would be to have the protocol class handle this.
+                        stream_reader = asyncio.StreamReader()
+                        stream_reader.feed_data(raw_data)
+                        stream_reader.feed_eof()
+
+                        try:
+                            # Read message length (4 bytes)
+                            header = await reader.readexactly(4)
+                            if not header:
+                                break # Connection closed cleanly by peer
+                            
+                            msg_length = struct.unpack('>I', header)[0]
+                            
+                            # Read message data
+                            data = await reader.readexactly(msg_length)
+                            
+                            # Process the message
+                            await self._process_message(data, client_id)
+                            
+                        # Diagnostic Step 2: Catch-all exception handler
+                        except Exception as e:
+                            import traceback
+                            tb_str = traceback.format_exc()
+                            logging.error(f"!!! EXCEPTION during message processing from {client_addr}: {e}\n{tb_str}")
+                            # Send a generic error response if possible
+                            error_response = Message(type='ERROR', payload={'error': 'Internal server error', 'details': str(e)})
+                            await self.protocol.write_message(error_response, writer)
+                            # It's often best to close the connection on a processing error
+                            break
+                            
+                except ConnectionResetError:
+                    logging.warning(f"Connection reset by {client_addr}")
+                except Exception as e:
+                    import traceback
+                    tb_str = traceback.format_exc()
+                    logging.error(f"Unhandled connection-level error from {client_addr}: {e}\n{tb_str}")
+                finally:
+                    writer.close()
+                    await writer.wait_closed()
+            await _handle_connection(reader, writer)
         except (asyncio.IncompleteReadError, ConnectionResetError) as e:
             logger.debug(f"Client {client_id} at {client_addr} disconnected: {e}")
         except asyncio.CancelledError:

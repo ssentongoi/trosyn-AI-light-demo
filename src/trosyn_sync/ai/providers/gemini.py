@@ -13,7 +13,7 @@ class GeminiProvider(BaseAIProvider):
     
     def __init__(
         self,
-        model_name: str = "google/gemma-3b",
+        model_name: str = "google/gemma-3n-e2b",
         device: Optional[str] = None,
         model_path: Optional[Union[str, Path]] = None,
         **kwargs

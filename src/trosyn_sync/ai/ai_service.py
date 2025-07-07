@@ -19,7 +19,7 @@ class AIService:
     
     def __init__(
         self,
-        model_name: str = "google/gemma-3b",
+        model_name: str = "google/gemma-3n-e2b",
         model_path: Optional[Union[str, Path]] = None,
         device: Optional[str] = None,
         memory_engine: Optional[MemoryEngine] = None,

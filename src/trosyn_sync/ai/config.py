@@ -11,7 +11,7 @@ class AIConfig:
     """Configuration for AI services."""
     
     # Model settings
-    MODEL_NAME = os.getenv("AI_MODEL_NAME", "google/gemma-3b")
+    MODEL_NAME = os.getenv("AI_MODEL_NAME", "google/gemma-3n-e2b")
     MODEL_PATH = os.getenv("AI_MODEL_PATH")
     DEVICE = os.getenv("AI_DEVICE")  # cuda, mps, or cpu
     
