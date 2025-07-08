@@ -1,38 +1,22 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "ESNext",
-    "moduleResolution": "node",
-    "strict": true,
-    "esModuleInterop": true,
+    "target": "ESNext",
+    "useDefineForClassFields": true,
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "allowJs": false,
     "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
     "forceConsistentCasingInFileNames": true,
-    "baseUrl": ".",
-    "outDir": "./dist/renderer",
-    "rootDir": "./src/renderer",
-    "paths": {
-      "@/*": ["./src/renderer/*"]
-    },
-    "types": ["vite/client"],
-    "jsx": "preserve",
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Node",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": false,
-    "allowJs": true,
-    "checkJs": false
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "types": ["vitest/globals", "@testing-library/jest-dom"]
   },
-  "include": [
-    "src/renderer/**/*.ts",
-    "src/renderer/**/*.d.ts",
-    "src/renderer/**/*.tsx",
-    "src/renderer/**/*.vue",
-    "src/shims-vue.d.ts",
-    "src/types/**/*.d.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "**/*.spec.ts"
-  ]
+  "include": ["src", "test"],
+  "references": [{ "path": "./tsconfig.node.json" }]
 }
