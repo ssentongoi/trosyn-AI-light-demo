@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script for Gemma 3.1B model integration.
+Test script for Gemma 3N model integration.
 """
 
 import os
@@ -13,8 +13,8 @@ from llama_cpp import Llama
 load_dotenv()
 
 def load_model():
-    """Load the Gemma 3.1B model."""
-    model_path = os.getenv("LLM_MODEL_PATH", "models/gemma-3-1b-it-q4_0.gguf")
+    """Load the Gemma 3N model."""
+    model_path = os.getenv("LLM_MODEL_PATH", "models/gemma-3n-e2b.gguf")
     context_size = int(os.getenv("LLM_CONTEXT_SIZE", 2048))
     n_gpu_layers = int(os.getenv("LLM_N_GPU_LAYERS", 0))
     
@@ -172,9 +172,9 @@ def get_test_prompts():
     ]
 
 def main():
-    """Main function to test the Gemma 3.1B model."""
+    """Main function to test the Gemma 3N model."""
     print("="*80)
-    print("Gemma 3.1B Model Test".center(80))
+    print("Gemma 3N Model Test".center(80))
     print("="*80)
     
     try:

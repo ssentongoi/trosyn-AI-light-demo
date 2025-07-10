@@ -5,9 +5,9 @@ import AuthRoute from '../AuthRoute';
 import AppContext from '../../../contexts/AppContext';
 
 // Mock the Navigate component to spy on its props
-const mockNavigate = jest.fn();
-jest.mock('react-router-dom', () => ({
-  ...jest.requireActual('react-router-dom'),
+const mockNavigate = vi.fn();
+vi.mock('react-router-dom', () => ({
+  ...vi.requireActual('react-router-dom'),
   Navigate: (props) => {
     mockNavigate(props);
     return <div data-testid="navigate-mock" />;

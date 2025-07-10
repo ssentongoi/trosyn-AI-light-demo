@@ -17,6 +17,8 @@ import AIAssistant from './pages/AIAssistant';
 import DocumentsPage from './pages/DocumentsPage';
 import NotificationsPage from './pages/NotificationsPage';
 import DepartmentRequestPage from './pages/DepartmentRequestPage';
+import EditorDemo from './pages/EditorDemo';
+import EditorTestPage from './pages/EditorTestPage';
 import './App.css';
 
 // A wrapper for protected routes
@@ -104,6 +106,16 @@ function App() {
           <Route path="documents" element={
             <ProtectedRoute>
               <DocumentsPage />
+            </ProtectedRoute>
+          } />
+          <Route path="editor-demo" element={
+            <ProtectedRoute>
+              <EditorDemo />
+            </ProtectedRoute>
+          } />
+          <Route path="editor-test" element={
+            <ProtectedRoute>
+              <EditorTestPage />
             </ProtectedRoute>
           } />
           <Route path="notifications" element={

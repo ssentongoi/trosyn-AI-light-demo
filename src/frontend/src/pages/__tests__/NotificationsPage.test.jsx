@@ -22,15 +22,15 @@ const renderWithProviders = (ui) => {
 describe('NotificationsPage', () => {
   beforeEach(() => {
     // Mock the setTimeout to immediately resolve
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     
     // Mock the console.error to avoid polluting test output
-    jest.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {
-    jest.useRealTimers();
-    jest.restoreAllMocks();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   test('renders loading state initially', () => {
@@ -44,7 +44,7 @@ describe('NotificationsPage', () => {
     renderWithProviders(<NotificationsPage />);
     
     // Fast-forward timers to resolve the mock data loading
-    jest.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1000);
     
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -60,7 +60,7 @@ describe('NotificationsPage', () => {
     renderWithProviders(<NotificationsPage />);
     
     // Fast-forward timers to resolve the mock data loading
-    jest.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1000);
     
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -89,7 +89,7 @@ describe('NotificationsPage', () => {
     renderWithProviders(<NotificationsPage />);
     
     // Fast-forward timers to resolve the mock data loading
-    jest.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1000);
     
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -106,7 +106,7 @@ describe('NotificationsPage', () => {
     renderWithProviders(<NotificationsPage />);
     
     // Fast-forward timers to resolve the mock data loading
-    jest.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1000);
     
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -123,7 +123,7 @@ describe('NotificationsPage', () => {
     renderWithProviders(<NotificationsPage />);
     
     // Fast-forward timers to resolve the mock data loading
-    jest.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1000);
     
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -144,7 +144,7 @@ describe('NotificationsPage', () => {
     renderWithProviders(<NotificationsPage />);
     
     // Fast-forward timers to resolve the mock data loading
-    jest.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1000);
     
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -164,14 +164,14 @@ describe('NotificationsPage', () => {
 
   test('displays error state when loading fails', async () => {
     // Mock console.error to throw an error during loading
-    jest.spyOn(console, 'error').mockImplementation(() => {
+    vi.spyOn(console, 'error').mockImplementation(() => {
       throw new Error('Failed to load notifications');
     });
     
     renderWithProviders(<NotificationsPage />);
     
     // Fast-forward timers to trigger the error
-    jest.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1000);
     
     await waitFor(() => {
       expect(screen.getByText('Failed to load notifications. Please try again.')).toBeInTheDocument();
@@ -182,7 +182,7 @@ describe('NotificationsPage', () => {
     renderWithProviders(<NotificationsPage />);
     
     // Fast-forward timers to resolve the mock data loading
-    jest.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1000);
     
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -198,7 +198,7 @@ describe('NotificationsPage', () => {
     renderWithProviders(<NotificationsPage />);
     
     // Fast-forward timers to resolve the mock data loading
-    jest.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1000);
     
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -215,10 +215,10 @@ describe('NotificationsPage', () => {
     
     // Mock window.location.reload
     const originalReload = window.location.reload;
-    window.location.reload = jest.fn();
+    window.location.reload = vi.fn();
     
     // Fast-forward timers to resolve the mock data loading
-    jest.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1000);
     
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();

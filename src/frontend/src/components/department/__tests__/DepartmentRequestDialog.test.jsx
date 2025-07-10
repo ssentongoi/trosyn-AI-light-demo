@@ -44,13 +44,13 @@ const renderWithTheme = (ui) => {
 };
 
 describe('DepartmentRequestDialog', () => {
-  const mockOnClose = jest.fn();
-  const mockOnApprove = jest.fn();
-  const mockOnReject = jest.fn();
-  const mockOnComment = jest.fn();
+  const mockOnClose = vi.fn();
+  const mockOnApprove = vi.fn();
+  const mockOnReject = vi.fn();
+  const mockOnComment = vi.fn();
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   test('renders dialog with request details when open', () => {

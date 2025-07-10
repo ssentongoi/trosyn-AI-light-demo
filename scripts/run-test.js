@@ -1,19 +1,10 @@
 // Simple test runner for TypeScript tests using ts-node
-import { register } from 'ts-node';
-import { fileURLToPath } from 'url';
-import { dirname, resolve } from 'path';
-import { createRequire } from 'module';
-
-// Create a require function that works in ES module
-const require = createRequire(import.meta.url);
-
-// Register ts-node with ESM support
-register({
+require('ts-node').register({
   transpileOnly: true,
   compilerOptions: {
-    module: 'ESNext',
-    esModuleInterop: true,
     target: 'es2020',
+    module: 'commonjs',
+    esModuleInterop: true,
     moduleResolution: 'node',
     sourceMap: true,
     outDir: './dist',
@@ -25,24 +16,39 @@ register({
   }
 });
 
-// Set test timeout
-const timeout = 10000;
+const { resolve } = require('path');
+const { glob } = require('glob');
 
-// Get the directory name in ESM
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// Configure Mocha
+const Mocha = require('mocha');
+const mocha = new Mocha({
+  timeout: 10000,
+  reporter: 'spec',
+  ui: 'bdd',
+  color: true
+});
 
-// Run the test file
-try {
-  // Use dynamic import to load the test file
-  const testPath = resolve(__dirname, '../test/main/services/FileWatcherService.test.mts');
-  console.log(`Loading test file: ${testPath}`);
-  await import(testPath);
-  
-  // If we get here, the test completed successfully
-  console.log('✅ Test completed successfully');
+// Find all test files
+const testDir = resolve(__dirname, '..', 'test');
+const testFiles = glob.sync('**/*.test.{js,ts}', { cwd: testDir });
+
+if (testFiles.length === 0) {
+  console.log('No test files found in', testDir);
   process.exit(0);
-} catch (error) {
-  console.error('❌ Test failed with error:', error);
-  process.exit(1);
 }
+
+console.log('Found test files:', testFiles);
+
+// Add test files to Mocha
+testFiles.forEach((file) => {
+  const filePath = resolve(testDir, file);
+  console.log('Adding test file:', filePath);
+  mocha.addFile(filePath);
+});
+
+// Run the tests
+console.log('Starting test run...');
+mocha.run((failures) => {
+  console.log('Test run completed with', failures, 'failures');
+  process.exitCode = failures ? 1 : 0;
+});

@@ -380,6 +380,22 @@ export class FileWatcherService {
   }
 
   /**
+   * Get file statistics
+   * @param filePath Path to the file
+   * @returns File stats or null if file doesn't exist
+   */
+  public async getFileStats(filePath: string): Promise<fs.Stats | null> {
+    try {
+      return await fs.stat(filePath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return null; // File doesn't exist
+      }
+      throw error; // Re-throw other errors
+    }
+  }
+
+  /**
    * Check if the watcher is active
    */
   public isActive(): boolean {

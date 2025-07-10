@@ -5,14 +5,14 @@
 * **No cloud/hybrid architecture ever**
 * Entire system runs **fully on-device**
 * **Secure, optional online access** only to fetch info — no data ever leaves the device
-* All agents, summarization, RAG, and doc analysis powered by **Gemma 3 1B**, upgrading to **Gemma 3n** when released
+* All agents, summarization, RAG, and doc analysis powered by **Gemma 3N**
 * Designed for privacy-first AI with **department-aware customization** and **user-owned context**
 
 ---
 
 ## 🔷 FINAL TROSYN AI MVP ROADMAP (Fully Offline-First with Secure Online Fetch Option)
 
-### 📘 MVP 1: Core Document Intelligence (Gemma 3 1B)
+### 📘 MVP 1: Core Document Intelligence (Gemma 3N)
 
 | 🔧 Features |
 | ----------- |
@@ -23,7 +23,7 @@
 * Local embeddings + semantic document search
 * Tag extraction & simple metadata classification
 
-> 🧠 *Everything is processed locally using Gemma 3 1B and quantized models. Secure offline setup.*
+> 🧠 *Everything is processed locally using Gemma 3N and quantized models. Secure offline setup.*
 
 ---
 
@@ -161,7 +161,7 @@
 
 | Element            | Approach                                               |
 | ------------------ | ------------------------------------------------------ |
-| AI model           | **Gemma 3 1B** → **Gemma 3n** upgrade only             |
+| AI model           | **Gemma 3N** (upgradeable)             |
 | Online usage       | **Optional**, outbound-only, no prompt/context sharing |
 | User data          | Always local, encrypted, never sent to internet        |
 | RAG & Agents       | Local vector stores and logic pipelines                |

@@ -1,10 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Editor } from '../components/editor';
+import { useTheme } from '@mui/material/styles';
 import {
   Box,
   Button,
   Card,
   CardContent,
   CardHeader,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Container,
   Divider,
   Grid,
@@ -57,6 +63,10 @@ const DocumentsPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedDoc, setSelectedDoc] = useState(null);
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [editorContent, setEditorContent] = useState(null);
+  const [isNewDocument, setIsNewDocument] = useState(false);
+  const [currentDocument, setCurrentDocument] = useState(null);
   const [snackbar, setSnackbar] = useState({
     open: false,
     message: '',
@@ -179,6 +189,98 @@ const DocumentsPage = () => {
     setPage(0);
   };
 
+  const handleAddDocument = () => {
+    setIsNewDocument(true);
+    setCurrentDocument({
+      title: 'Untitled Document',
+      content: null
+    });
+    setEditorContent({
+      time: new Date().getTime(),
+      blocks: [
+        {
+          type: 'header',
+          data: {
+            text: 'Untitled Document',
+            level: 2
+          }
+        },
+        {
+          type: 'paragraph',
+          data: {
+            text: 'Start writing your document here...'
+          }
+        }
+      ]
+    });
+    setIsEditorOpen(true);
+  };
+
+  const handleEditDocument = (document) => {
+    setIsNewDocument(false);
+    setCurrentDocument(document);
+    // TODO: Load document content from API
+    setEditorContent({
+      time: new Date().getTime(),
+      blocks: [
+        {
+          type: 'header',
+          data: {
+            text: document.title,
+            level: 2
+          }
+        },
+        {
+          type: 'paragraph',
+          data: {
+            text: document.content || 'Start editing your document here...'
+          }
+        }
+      ]
+    });
+    setIsEditorOpen(true);
+  };
+
+  const handleSaveDocument = async () => {
+    if (!currentDocument) return;
+    
+    try {
+      setLoading(true);
+      // TODO: Implement save to API
+      const savedDocument = {
+        ...currentDocument,
+        updated_at: new Date(),
+        // Add other fields as needed
+      };
+      
+      setSnackbar({
+        open: true,
+        message: isNewDocument ? 'Document created successfully' : 'Document updated successfully',
+        severity: 'success'
+      });
+      
+      // Refresh documents list
+      // await fetchDocuments();
+      
+      // Close editor
+      setIsEditorOpen(false);
+    } catch (error) {
+      console.error('Error saving document:', error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to save document',
+        severity: 'error'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditorChange = useCallback((content) => {
+    // Handle editor content changes
+    console.log('Editor content changed:', content);
+  }, []);
+
   const filteredDocuments = documents.filter((doc) =>
     doc.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -242,15 +344,23 @@ const DocumentsPage = () => {
               onChange={handleUpload}
             />
             <label htmlFor="upload-file">
-              <Button
-                variant="contained"
-                color="primary"
-                startIcon={<UploadIcon />}
-                component="span"
-                sx={{ mr: 1 }}
-              >
-                Upload
-              </Button>
+              <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  startIcon={<AddIcon />}
+                  onClick={handleAddDocument}
+                >
+                  New Document
+                </Button>
+                <Button
+                  variant="outlined"
+                  startIcon={<UploadIcon />}
+                  onClick={() => {}}
+                >
+                  Upload
+                </Button>
+              </Box>
             </label>
             <Button
               variant="outlined"
@@ -336,14 +446,29 @@ const DocumentsPage = () => {
                             </Typography>
                           </TableCell>
                           <TableCell align="right">
-                            <Tooltip title="More actions">
-                              <IconButton
-                                size="small"
-                                onClick={(e) => handleMenuOpen(e, doc)}
-                              >
-                                <MoreVertIcon />
-                              </IconButton>
-                            </Tooltip>
+                            <Box sx={{ display: 'flex', gap: 1 }}>
+                              <Tooltip title="Edit">
+                                <IconButton
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleEditDocument(doc);
+                                  }}
+                                >
+                                  <EditIcon fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="More">
+                                <IconButton
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedDoc(doc);
+                                    setAnchorEl(e.currentTarget);
+                                  }}
+                                >
+                                  <MoreVertIcon />
+                                </IconButton>
+                              </Tooltip>
+                            </Box>
                           </TableCell>
                         </TableRow>
                       ))}

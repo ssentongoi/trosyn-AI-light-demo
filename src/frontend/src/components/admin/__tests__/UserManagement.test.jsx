@@ -7,7 +7,7 @@ import UserManagement from '../UserManagement';
 import { useUserManagement } from '../../../hooks/useUserManagement';
 
 // Mock the custom hook
-jest.mock('../../../hooks/useUserManagement');
+vi.mock('../../../hooks/useUserManagement');
 
 const mockUsers = [
   {
@@ -43,24 +43,24 @@ const mockUseUserManagement = {
   openUserMenu: null,
   selectedUser: null,
   userDetailsOpen: false,
-  fetchUsers: jest.fn(),
-  handleRequestSort: jest.fn(),
-  handleSelectAllClick: jest.fn(),
-  handleClick: jest.fn(),
-  handleChangePage: jest.fn(),
-  handleChangeRowsPerPage: jest.fn(),
-  setDense: jest.fn(),
-  handleUserMenuOpen: jest.fn(),
-  handleUserMenuClose: jest.fn(),
-  handleViewDetails: jest.fn(),
-  handleCloseDetails: jest.fn(),
-  handleResetPassword: jest.fn(),
+  fetchUsers: vi.fn(),
+  handleRequestSort: vi.fn(),
+  handleSelectAllClick: vi.fn(),
+  handleClick: vi.fn(),
+  handleChangePage: vi.fn(),
+  handleChangeRowsPerPage: vi.fn(),
+  setDense: vi.fn(),
+  handleUserMenuOpen: vi.fn(),
+  handleUserMenuClose: vi.fn(),
+  handleViewDetails: vi.fn(),
+  handleCloseDetails: vi.fn(),
+  handleResetPassword: vi.fn(),
 };
 
 describe('UserManagement Component', () => {
   beforeEach(() => {
     // Reset mocks before each test
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     useUserManagement.mockReturnValue(mockUseUserManagement);
   });
 
@@ -108,7 +108,7 @@ describe('UserManagement Component', () => {
   });
 
   it('calls handleChangePage with correct page number', () => {
-    const mockHandleChangePage = jest.fn();
+    const mockHandleChangePage = vi.fn();
     
     // Mock the useUserManagement hook with our mock handler
     useUserManagement.mockReturnValue({
@@ -119,7 +119,7 @@ describe('UserManagement Component', () => {
       rowsPerPage: 10,
       count: mockUsers.length,
       handleChangePage: mockHandleChangePage,
-      handleChangeRowsPerPage: jest.fn()
+      handleChangeRowsPerPage: vi.fn()
     });
     
     // Render the component
@@ -129,7 +129,7 @@ describe('UserManagement Component', () => {
     const { handleChangePage } = useUserManagement();
     
     // Call the handler directly with test values
-    const mockEvent = { preventDefault: jest.fn() };
+    const mockEvent = { preventDefault: vi.fn() };
     handleChangePage(mockEvent, 1);
     
     // Verify the handler was called with the correct arguments
@@ -217,8 +217,8 @@ describe('UserManagement Component', () => {
       rowsPerPage: 10,
       page: 0,
       count: manyUsers.length,
-      handleChangePage: jest.fn(),
-      handleChangeRowsPerPage: jest.fn()
+      handleChangePage: vi.fn(),
+      handleChangeRowsPerPage: vi.fn()
     });
     
     renderComponent();

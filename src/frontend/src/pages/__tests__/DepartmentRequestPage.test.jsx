@@ -6,7 +6,7 @@ import DepartmentRequestPage from '../DepartmentRequestPage';
 import { MemoryRouter } from 'react-router-dom';
 
 // Mock the child components to isolate the page component testing
-jest.mock('../../components/department/DepartmentRequestDialog', () => ({
+vi.mock('../../components/department/DepartmentRequestDialog', () => ({
   __esModule: true,
   default: ({ open, onClose }) => (
     <div data-testid="mock-request-dialog">
@@ -16,7 +16,7 @@ jest.mock('../../components/department/DepartmentRequestDialog', () => ({
   ),
 }));
 
-jest.mock('../../components/department/DepartmentRequestForm', () => ({
+vi.mock('../../components/department/DepartmentRequestForm', () => ({
   __esModule: true,
   default: ({ open, onClose, onSubmit }) => (
     <div data-testid="mock-request-form">
@@ -76,15 +76,15 @@ const renderWithProviders = (ui) => {
 describe('DepartmentRequestPage', () => {
   beforeEach(() => {
     // Mock the setTimeout to immediately resolve
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     
     // Mock the console.error to avoid polluting test output
-    jest.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {
-    jest.useRealTimers();
-    jest.restoreAllMocks();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   test('renders loading state initially', () => {
@@ -98,7 +98,7 @@ describe('DepartmentRequestPage', () => {
     renderWithProviders(<DepartmentRequestPage />);
     
     // Fast-forward timers to resolve the mock data loading
-    jest.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1000);
     
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -114,7 +114,7 @@ describe('DepartmentRequestPage', () => {
     renderWithProviders(<DepartmentRequestPage />);
     
     // Fast-forward timers to resolve the mock data loading
-    jest.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1000);
     
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -137,7 +137,7 @@ describe('DepartmentRequestPage', () => {
     renderWithProviders(<DepartmentRequestPage />);
     
     // Fast-forward timers to resolve the mock data loading
-    jest.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1000);
     
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -159,7 +159,7 @@ describe('DepartmentRequestPage', () => {
     renderWithProviders(<DepartmentRequestPage />);
     
     // Fast-forward timers to resolve the mock data loading
-    jest.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1000);
     
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
@@ -177,7 +177,7 @@ describe('DepartmentRequestPage', () => {
     renderWithProviders(<DepartmentRequestPage />);
     
     // Fast-forward timers to resolve the mock data loading
-    jest.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1000);
     
     await waitFor(() => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();

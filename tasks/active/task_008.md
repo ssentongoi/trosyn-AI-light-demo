@@ -1,11 +1,11 @@
 # Task ID: 8
-# Title: Implement AI Integration (Gemma 3 1B)
+# Title: Implement AI Integration (Gemma 3N)
 # Status: pending
 # Dependencies: Task 7 (Core Editor)
 # Priority: high
-# Description: Integrate Gemma 3 1B for local AI capabilities
+# Description: Integrate Gemma 3N for local AI capabilities
 # Details:
-This task involves integrating the Gemma 3 1B model for local AI processing, including text processing features and agent system.
+This task involves integrating the Gemma 3N model for local AI processing, including text processing features and agent system.
 
 # Test Strategy:
 - Unit tests for each AI feature
@@ -16,7 +16,7 @@ This task involves integrating the Gemma 3 1B model for local AI processing, inc
 # Subtasks:
 ## 1. Model Integration [pending]
 ### Dependencies: 7.1 (Project Setup)
-### Description: Set up Gemma 3 1B for local inference
+### Description: Set up Gemma 3N for local inference
 ### Details:
 - [ ] Set up GGUF or ONNX runtime
 - [ ] Implement model loading and initialization

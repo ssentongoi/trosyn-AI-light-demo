@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # Initialize FastAPI app
 app = FastAPI(
     title="Trosyn AI API",
-    description="API for Trosyn AI's Gemma 3.1B LLM and Document Processing",
+    description="API for Trosyn AI's Gemma 3N LLM and Document Processing",
     version="0.2.0",
     docs_url="/docs",
     redoc_url="/redoc",
@@ -72,7 +72,7 @@ class ModelInfo(BaseModel):
 llm = None
 model_loaded = False
 model_info = {
-    "id": "gemma-3-1b-it",
+    "id": "google/gemma-3n-e2b",
     "created": int(time.time()),
     "object": "model",
     "owned_by": "trosyn-ai"
@@ -85,7 +85,7 @@ async def startup_event():
     try:
         from llama_cpp import Llama
         
-        model_path = os.getenv("LLM_MODEL_PATH", "models/gemma-3-1b-it-q4_0.gguf")
+        model_path = os.getenv("LLM_MODEL_PATH", "models/gemma-3n-e2b.gguf")
         if not os.path.exists(model_path):
             logger.error(f"Model file not found at {model_path}")
             return

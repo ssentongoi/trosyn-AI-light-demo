@@ -6,13 +6,13 @@ import authService from '../../services/auth';
 import notificationService from '../../services/notification';
 
 // Use automatic mocks from __mocks__ directory
-jest.mock('../../services/auth');
-jest.mock('../../services/notification');
+vi.mock('../../services/auth');
+vi.mock('../../services/notification');
 
 // Mock useNavigate
-jest.mock('react-router-dom', () => ({
-  ...jest.requireActual('react-router-dom'),
-  useNavigate: () => jest.fn(),
+vi.mock('react-router-dom', () => ({
+  ...vi.requireActual('react-router-dom'),
+  useNavigate: () => vi.fn(),
 }));
 
 // A simple component to interact with and display context values
@@ -45,19 +45,19 @@ describe('AppContext', () => {
   beforeEach(() => {
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
-      value: jest.fn().mockImplementation(query => ({
+      value: vi.fn().mockImplementation(query => ({
         matches: false,
         media: query,
         onchange: null,
-        addListener: jest.fn(), // deprecated
-        removeListener: jest.fn(), // deprecated
-        addEventListener: jest.fn(),
-        removeEventListener: jest.fn(),
-        dispatchEvent: jest.fn(),
+        addListener: vi.fn(), // deprecated
+        removeListener: vi.fn(), // deprecated
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
       })),
     });
 
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     localStorage.clear();
 
     // Default successful mock implementations for services

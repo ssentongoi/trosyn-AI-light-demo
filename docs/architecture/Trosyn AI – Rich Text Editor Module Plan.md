@@ -11,7 +11,7 @@ Trosyn AI – Rich Text Editor Module Plan
 | Area            | Description                                                               |
 | --------------- | ------------------------------------------------------------------------- |
 | ✅ UI Simplicity | Minimalist editor (like Notion, not like Word)                            |
-| ✅ Offline-First | Fully functional without internet (Gemma 3.1B local AI runs all features) |
+| ✅ Offline-First | Fully functional without internet (Gemma 3N local AI runs all features) |
 | ✅ Extendable    | Custom blocks to support AI operations, summary, merge, tagging, etc.     |
 | ✅ Integratable  | Pluggable into Trosyn child apps (HR, Marketing, etc.)                    |
 
@@ -28,7 +28,7 @@ Trosyn AI – Rich Text Editor Module Plan
 
 #### 2. 🧠 **AI-Powered Blocks & Commands**
 
-AI runs locally using **Gemma 3.1B** embedded in the Trosyn AI offline agent.
+AI runs locally using **Gemma 3N** embedded in the Trosyn AI offline agent.
 
 | Feature                    | Description                                           |
 | -------------------------- | ----------------------------------------------------- |
@@ -38,7 +38,7 @@ AI runs locally using **Gemma 3.1B** embedded in the Trosyn AI offline agent.
 | 🏷️ Smart Tags             | Extract and suggest keywords/tags                     |
 | 🔗 Merge Similar Notes     | Detect similar notes, merge or suggest link           |
 | 📎 Reference Block         | Pull in relevant docs/snippets from other departments |
-| ✏️ Grammar/Spell Check     | Inline correction (local-only) using Gemma            |
+| ✏️ Grammar/Spell Check     | Inline correction (local-only) using Gemma 3N         |
 | ⏱️ Time/Date Reminder Tags | Parse and flag time references, add reminders         |
 
 #### 3. 📦 **Custom Blocks**
@@ -300,7 +300,7 @@ import json
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 
 # Load model once on startup
-model_name = "google/gemma-1.1-1b-it"
+model_name = "google/gemma-3n-e2b"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForCausalLM.from_pretrained(model_name)
 summarizer = pipeline("summarization", model=model, tokenizer=tokenizer)

@@ -43,8 +43,8 @@ class Settings(BaseSettings):
     ]
     
     # Model settings
-    MODEL_NAME: str = "gemma-3-1b-it"
-    MODEL_PATH: str = str(Path(DATA_DIR) / "models" / "gemma-3-1b-it-q8_0.gguf")
+    MODEL_NAME: str = "google/gemma-3n-e2b"
+    MODEL_PATH: str = str(Path(DATA_DIR) / "models" / "gemma-3n-e2b.gguf")
     MODEL_CONTEXT_SIZE: int = 8192
     MODEL_MAX_TOKENS: int = 2048
     MODEL_TEMPERATURE: float = 0.7

@@ -2,7 +2,7 @@ Trosyn AI – Product Requirements Document (PRD)
 
 1. Product Overview
 
-Trosyn AI is an offline-first, self-hosted AI productivity system for businesses. It uses on-device AI to provide document understanding, secure knowledge assistance, and automation across departments without relying on the internet. It’s built to run efficiently using Gemma 3.1B, with a future transition to Gemma 3.n for enhanced capabilities once stable.
+Trosyn AI is an offline-first, self-hosted AI productivity system for businesses. It uses on-device AI to provide document understanding, secure knowledge assistance, and automation across departments without relying on the internet. It's built to run efficiently using Gemma 3N, with continuous updates for enhanced capabilities.
 
 ⸻
 
@@ -24,7 +24,7 @@ Trosyn AI is an offline-first, self-hosted AI productivity system for businesses
 
 4. Core Features
 
-A. Offline AI Capabilities (Powered by Gemma 3.1B)
+A. Offline AI Capabilities (Powered by Gemma 3N)
 
 Feature	Description
 Summarization	Summarize internal documents, reports, and notes
@@ -124,7 +124,7 @@ LAN Sync	Admin-Child sync system with version resolution
 
 Layer	Stack/Tooling
 UI	React (Admin), Vue/Electron (Child apps)
-AI Engine	Gemma 3.1B (with future upgrade to 3.n planned)
+AI Engine	Gemma 3N
 Data Storage	SQLite + JSON notes
 Syncing Layer	Local HTTP or WebSocket
 Cloud Add-ons	GPT/Med-Gemini (optional, controlled by admin policy)
@@ -134,13 +134,13 @@ Cloud Add-ons	GPT/Med-Gemini (optional, controlled by admin policy)
 
 11. Development Notes
 
-Current AI Model: Gemma 3.1B
-	•	All AI features (summarization, redaction, grammar, reasoning) are optimized for Gemma 3.1B.
+Current AI Model: Gemma 3N
+	•	All AI features (summarization, redaction, grammar, reasoning) are optimized for Gemma 3N.
 	•	Chosen for efficiency and small size to run fully offline on standard devices.
 	•	Allows fully disconnected operations with predictable memory use.
 
 Planned Upgrade: Gemma 3.n
-	•	Once Gemma 3.n is stable, it will replace 3.1B in the core system.
+	•	The system will receive continuous updates to the Gemma 3N model as they become available.
 	•	Expected improvements:
 	•	Longer context handling
 	•	Better reasoning across multiple documents
@@ -162,7 +162,7 @@ Admin Server	One machine per company manages licensing, sync, and enforcement
 13. MVP Roadmap (Updated)
 
 MVP Phase	Features
-MVP 1	Core summarization, redaction, Gemma 3.1B engine, HR module
+MVP 1	Core summarization, redaction, Gemma 3N engine, HR module
 MVP 2	Add Finance & Marketing modules, spell check, table support
 MVP 3	Admin dashboard, role management, LAN sync engine
 MVP 4	Payment system, Stripe/Flutterwave routing, soft locks, usage logging

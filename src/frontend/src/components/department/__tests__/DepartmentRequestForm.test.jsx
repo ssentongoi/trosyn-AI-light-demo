@@ -17,8 +17,8 @@ const renderWithTheme = (ui) => {
 };
 
 describe('DepartmentRequestForm', () => {
-  const mockOnClose = jest.fn();
-  const mockOnSubmit = jest.fn();
+  const mockOnClose = vi.fn();
+  const mockOnSubmit = vi.fn();
   
   // Mock existing request for edit mode
   const mockRequest = {
@@ -36,7 +36,7 @@ describe('DepartmentRequestForm', () => {
   };
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   test('renders form dialog when open', () => {
@@ -231,7 +231,7 @@ describe('DepartmentRequestForm', () => {
 
   test('shows error when form submission fails', async () => {
     // Mock onSubmit to reject with an error
-    const mockOnSubmitWithError = jest.fn().mockRejectedValue(new Error('Submission failed'));
+    const mockOnSubmitWithError = vi.fn().mockRejectedValue(new Error('Submission failed'));
     
     renderWithTheme(
       <DepartmentRequestForm

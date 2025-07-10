@@ -1,14 +1,14 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import '@testing-library/jest-dom';
+import '@testing-library/vi-dom';
 import Login from '../Login';
 import AppContext from '../../contexts/AppContext';
 
 // Mock react-router-dom's useNavigate
-const mockNavigate = jest.fn();
-jest.mock('react-router-dom', () => ({
-  ...jest.requireActual('react-router-dom'),
+const mockNavigate = vi.fn();
+vi.mock('react-router-dom', () => ({
+  ...vi.requireActual('react-router-dom'),
   useNavigate: () => mockNavigate,
 }));
 
@@ -28,7 +28,7 @@ describe('Login Component', () => {
 
   beforeEach(() => {
     // Reset mocks before each test
-    mockLogin = jest.fn();
+    mockLogin = vi.fn();
     mockNavigate.mockClear();
   });
 

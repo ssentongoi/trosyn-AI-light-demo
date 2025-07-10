@@ -5,7 +5,7 @@
 # Priority: high
 # Description: Implement a Notion-style rich text editor with AI-powered features using Editor.js (https://github.com/codex-team/editor.js)
 # Details:
-Based on the specification in docs/architecture/Trosyn AI – Rich Text Editor Module Plan.md, implement a modular, offline-first rich text editor with AI capabilities powered by Gemma 3.1B.
+Based on the specification in docs/architecture/Trosyn AI – Rich Text Editor Module Plan.md, implement a modular, offline-first rich text editor with AI capabilities powered by Gemma 3N.
 
 # Test Strategy:
 - Unit tests for individual editor components and blocks
@@ -36,7 +36,7 @@ Based on the specification in docs/architecture/Trosyn AI – Rich Text Editor M
 
 ## 3. Integrate Local AI Processing [pending]
 ### Dependencies: 20.2
-### Description: Connect to Gemma 3.1B for local AI features
+### Description: Connect to Gemma 3N for local AI features
 ### Details:
 - Set up local inference pipeline
 - Implement text summarization

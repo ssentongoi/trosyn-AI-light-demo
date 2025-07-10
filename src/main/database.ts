@@ -17,10 +17,74 @@ class DatabaseService {
   private static instance: DatabaseService | null = null;
   private static appInstance: any = null;
   private static dbModule: any = null;
+  private static initializationFailed: boolean = false;
+
   private db: any;
   private dbPath: string;
   private app: any;
   private isInitialized: boolean = false;
+  
+  /**
+   * Execute a raw SQL query with optional parameters
+   */
+  public query(sql: string, params: any[] = []): any {
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
+    const statement = this.db.prepare(sql);
+    return params.length > 0 ? statement.all(...params) : statement.all();
+  }
+  
+  /**
+   * Get a document by its numeric ID.
+   * The 'documents' table uses an INTEGER PRIMARY KEY.
+   */
+  public getDocument(id: number): any {
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
+    return this.db.prepare('SELECT * FROM documents WHERE id = ?').get(id) || null;
+  }
+
+  /**
+   * Get a document by an ID that may be a string. This is a helper
+   * for IPC calls where IDs might be passed as strings.
+   */
+  public getDocumentByStringId(id: string): any {
+    const numericId = parseInt(id, 10);
+    if (isNaN(numericId)) {
+      console.error(`Invalid numeric ID provided: ${id}`);
+      return null;
+    }
+    return this.getDocument(numericId);
+  }
+  
+  /**
+   * Save a document (insert or replace). Ensures ID is an integer.
+   */
+  public saveDocument(document: any): any {
+    if (!this.db) {
+      throw new Error('Database not initialized');
+    }
+    const { id, ...docData } = document;
+    
+    // Ensure ID is a number for the database query
+    const numericId = id ? parseInt(id, 10) : null;
+
+    const columns = Object.keys(docData);
+    const placeholders = columns.map(() => '?').join(', ');
+    const values = columns.map(col => docData[col]);
+    
+    const query = numericId
+      ? `INSERT OR REPLACE INTO documents (id, ${columns.join(', ')}) VALUES (?, ${placeholders})`
+      : `INSERT INTO documents (${columns.join(', ')}) VALUES (${placeholders})`;
+
+    const params = numericId ? [numericId, ...values] : values;
+    
+    const result = this.db.prepare(query).run(...params);
+    
+    return { id: numericId || result.lastInsertRowid, ...docData };
+  }
   
   // Initialize the database module
   public static async initializeDbModule() {
@@ -74,11 +138,17 @@ class DatabaseService {
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('Failed to initialize database:', error);
+      DatabaseService.initializationFailed = true; // Set failure flag
+      this.isInitialized = false; // Explicitly set to false
       throw new Error(`Database initialization failed: ${errorMessage}`);
     }
   }
 
   public static async getInstanceAsync(electronApp: any = null): Promise<DatabaseService> {
+    if (DatabaseService.initializationFailed) {
+      throw new Error('Database service has previously failed to initialize. Cannot create a new instance.');
+    }
+
     try {
       const appInstance = electronApp || app;
       
@@ -116,8 +186,8 @@ class DatabaseService {
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        if (!this.db || !this.isInitialized) {
-          this.initializeDatabaseConnection();
+        if (!this.db) {
+          throw new Error('Database is not initialized. Cannot perform operation.');
         }
         return operation();
       } catch (error: unknown) {
@@ -204,17 +274,33 @@ class DatabaseService {
     return this.db;
   }
 
-  // Create a new document
-  public createDocument(title: string, content: string, metadata: string = '{}'): number {
+  /**
+   * Create a new document
+   * @param docData DocumentData object containing document properties
+   */
+  public createDocument(docData: any): number {
     try {
+      // Extract properties from docData
+      const { title, content, metadata = '{}', filePath = null } = docData;
+      const stats = docData.stats || { mtime: new Date(), size: 0 };
+      
       // Parse metadata to ensure it's valid JSON
       const meta = typeof metadata === 'string' ? JSON.parse(metadata) : metadata;
       const metadataStr = JSON.stringify(meta);
       
       const stmt = this.db.prepare(
-        'INSERT INTO documents (title, content, metadata) VALUES (?, ?, ?)'
+        'INSERT INTO documents (title, content, metadata, filePath, lastModified, size, ino, dev) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
       );
-      const result = stmt.run(title, content, metadataStr);
+      const result = stmt.run(
+        title, 
+        content, 
+        metadataStr,
+        filePath,
+        stats.mtime?.toISOString() || new Date().toISOString(),
+        stats.size || 0,
+        stats.ino || null,
+        stats.dev || null
+      );
       return result.lastInsertRowid;
     } catch (error) {
       console.error('Error creating document:', error);
@@ -222,9 +308,7 @@ class DatabaseService {
     }
   }
 
-  public getDocument(id: number) {
-    return this.db.prepare('SELECT * FROM documents WHERE id = ?').get(id);
-  }
+
 
   // Get all documents
   public getAllDocuments(): any[] {

@@ -1,6 +1,6 @@
 # Trosyn AI API
 
-This is the API server for Trosyn AI, providing access to the Gemma 3.1B language model and distributed synchronization capabilities.
+This is the API server for Trosyn AI, providing access to the Gemma 3N language model and distributed synchronization capabilities.
 
 ## Features
 
@@ -33,14 +33,14 @@ This is the API server for Trosyn AI, providing access to the Gemma 3.1B languag
    pip install -r requirements-api.txt
    ```
 
-3. Download the Gemma 3.1B model (GGUF format) and place it in the `models/` directory.
+3. Download the Gemma 3N model (GGUF format) and place it in the `models/` directory.
 
 ## Configuration
 
 ### Environment Variables
 
 #### LLM Configuration
-- `LLM_MODEL_PATH`: Path to the model file (default: `models/gemma-3-1b-it-q4_0.gguf`)
+- `LLM_MODEL_PATH`: Path to the model file (default: `models/gemma-3n-e2b.gguf`)
 - `LLM_CONTEXT_SIZE`: Context window size (default: 2048)
 - `LLM_N_GPU_LAYERS`: Number of layers to offload to GPU (default: 0)
 
