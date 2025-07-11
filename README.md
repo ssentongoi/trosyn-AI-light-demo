@@ -23,14 +23,14 @@ Optional local network syncing keeps multiple devices in sync—while staying of
  What Trosyn AI Is Not
 	•	Not cloud-based.
 	•	No external AI APIs.
-	•	No data ever leaves your servers.
+	•	No data ever leaves your servers without you knowledge
 	•	No dependency on internet access for core functions.
 
 ⸻
 
 🔧 Future Optional Add‑Ons
 
-Connectors (Strictly opt-in)
+Connectors (Strictly opt-in) will be added
 
 Enable integrations with your systems, including:
 	•	Gmail
@@ -72,9 +72,6 @@ Repo Structure
 
 ⸻
 
-	• Contact: ssentongoivan1@gmail.com
-
-⸻
 
 Why It Matters
 
