@@ -21,11 +21,20 @@ tauri-build = { version = "2.3.0", features = [] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
-tauri = { version = "2.6.2", features = [] }
+tauri = { version = "2.6.2", features = ["test"] }
 tauri-plugin-log = "2"
 tauri-plugin-fs = "2.0.0-beta.5"
 tauri-plugin-dialog = "2.0.0-beta.5"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.4", features = ["v4", "serde"] }
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["full", "rt-multi-thread", "macros"] }
 thiserror = "1.0"
+rfd = "0.13"
+dirs = "5.0"
+tempfile = "3.3"
+
+[dev-dependencies]
+tempfile = "3.3"
+serde_json = { version = "1.0", features = ["preserve_order"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.4", features = ["v4", "serde"] }
