@@ -5,7 +5,8 @@ from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status, Response, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.security.utils import get_authorization_scheme_param
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from jose.exceptions import ExpiredSignatureError
 
 from app.database import get_db
@@ -128,7 +129,7 @@ def remove_refresh_token_cookie(response: Response) -> None:
 
 async def get_current_user(
     token: str = Depends(oauth2_scheme), 
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """Get the current user from the access token."""
     credentials_exception = HTTPException(
@@ -146,7 +147,7 @@ async def get_current_user(
     except JWTError:
         raise credentials_exception
     
-    user = get_user(db, username)
+    user = await get_user(db, username)
     if user is None:
         raise credentials_exception
         
@@ -168,7 +169,7 @@ def get_current_active_user(
 
 async def get_current_user_from_refresh_token(
     refresh_token: str = Depends(oauth2_scheme), 
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """Get the current user from the refresh token."""
     credentials_exception = HTTPException(
@@ -189,14 +190,14 @@ async def get_current_user_from_refresh_token(
     except JWTError:
         raise credentials_exception
     
-    user = get_user(db, username)
+    user = await get_user(db, username)
     if user is None:
         raise credentials_exception
         
     return user
 
 # Helper function to get user from database
-def get_user(db: Session, username: str):
-    # This is a placeholder - implement actual database query
-    from app.models.user import User
-    return db.query(User).filter(User.username == username).first()
+async def get_user(db: AsyncSession, username: str) -> Optional[User]:
+    """Get a user from the database by username."""
+    result = await db.execute(select(User).filter(User.username == username))
+    return result.scalars().first()

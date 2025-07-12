@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import List, Optional, Union
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from app.models.chat import MessageRole
 
 
@@ -10,9 +10,7 @@ class ChatMessageBase(BaseModel):
     content: str = Field(..., min_length=1, max_length=10000)
     conversation_id: Optional[str] = None
 
-    class Config:
-        orm_mode = True
-        use_enum_values = True
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
 class ChatMessageCreate(ChatMessageBase):
@@ -32,16 +30,12 @@ class ChatMessageInDB(ChatMessageBase):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        orm_mode = True
-
 
 class ChatConversationBase(BaseModel):
     """Base schema for chat conversations."""
     title: Optional[str] = Field(None, max_length=255)
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ChatConversationCreate(ChatConversationBase):
@@ -60,9 +54,6 @@ class ChatConversationInDB(ChatConversationBase):
     user_id: int
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        orm_mode = True
 
 
 class ChatConversationWithMessages(ChatConversationInDB):
@@ -83,7 +74,7 @@ class ChatRequest(BaseModel):
     conversation_id: Optional[str] = None
     stream: bool = False
 
-    @validator('message')
+    @field_validator('message')
     def message_not_empty(cls, v):
         if not v or not v.strip():
             raise ValueError('Message cannot be empty')

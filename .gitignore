@@ -524,3 +524,6 @@ trosyn_sync.db*
 # Local development data
 /data/
 /storage/
+
+# YoYo AI version control directory
+.yoyo/

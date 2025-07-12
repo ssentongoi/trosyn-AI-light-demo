@@ -67,19 +67,18 @@ async_session_factory = async_sessionmaker(
     autocommit=False
 )
 
-@asynccontextmanager
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """Dependency to get async DB session"""
-    async with async_session_factory() as session:
-        try:
-            yield session
-            await session.commit()
-        except Exception as e:
-            await session.rollback()
-            logger.error(f"Database error: {str(e)}", exc_info=True)
-            raise
-        finally:
-            await session.close()
+    """Dependency to get async DB session."""
+    session = async_session_factory()
+    try:
+        yield session
+        await session.commit()
+    except Exception as e:
+        await session.rollback()
+        logger.error(f"Database error: {str(e)}", exc_info=True)
+        raise
+    finally:
+        await session.close()
 
 async def init_db():
     """Initialize database tables"""

@@ -1,46 +1,37 @@
 import os
-from typing import List, Dict, Any, Optional, AsyncGenerator
-from openai import OpenAI, AsyncOpenAI
+from typing import List, Dict, Any
+from collections.abc import AsyncGenerator
 from dotenv import load_dotenv
+from llama_cpp import Llama
 
 # Load environment variables
 load_dotenv()
 
 class AIService:
-    """Service class for handling AI-related operations."""
-    
+    """Service class for handling AI-related operations using Gemini 3N (local LLM)."""
     def __init__(self):
-        self.client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.model = os.getenv("AI_MODEL", "gpt-4o")
+        model_path = os.getenv("LLM_MODEL_PATH", os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "app_data/models/gemma-3n-E4B-it-Q4_K_M.gguf"))
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Gemini 3N model not found at {model_path}. Please check LLM_MODEL_PATH.")
+        self.llm = Llama(
+            model_path=model_path,
+            n_ctx=2048,
+            n_threads=os.cpu_count(),
+            verbose=False
+        )
         self.max_tokens = int(os.getenv("AI_MAX_TOKENS", 2000))
         self.temperature = float(os.getenv("AI_TEMPERATURE", 0.7))
-    
-    async def generate_response(
-        self,
-        messages: List[Dict[str, str]],
-        stream: bool = False,
-        **kwargs
-    ) -> Any:
-        """
-        Generate a response from the AI model.
-        
-        Args:
-            messages: List of message dictionaries with 'role' and 'content'.
-            stream: Whether to stream the response.
-            **kwargs: Additional parameters for the AI model.
-            
-        Returns:
-            The AI's response or a streaming response.
-        """
+
+    async def generate_response(self, messages: List[Dict[str, str]], stream: bool = False, **kwargs) -> str:
+        # Join messages into a single prompt string (OpenAI-style API compatibility)
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                max_tokens=kwargs.get('max_tokens', self.max_tokens),
-                temperature=kwargs.get('temperature', self.temperature),
-                stream=stream,
+            prompt = "\n".join([m["content"] for m in messages])
+            output = self.llm(
+                prompt,
+                max_tokens=kwargs.get("max_tokens", self.max_tokens),
+                temperature=kwargs.get("temperature", self.temperature)
             )
-            return response
+            return output["choices"][0]["text"]
         except Exception as e:
             # Log the error and re-raise with a more user-friendly message
             print(f"Error generating AI response: {str(e)}")
