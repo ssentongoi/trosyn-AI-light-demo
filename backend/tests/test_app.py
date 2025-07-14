@@ -25,6 +25,21 @@ from app.core.config import settings
 TEST_USER_EMAIL = "test.user@testco.com"
 TEST_USER_PASSWORD = "testpassword123"
 
+import pytest
+from app.models.user import User
+from app.database import get_db
+import uuid
+
+@pytest.fixture(autouse=True)
+def clean_users_table():
+    # This fixture will run before each test
+    from sqlalchemy.orm import Session
+    db = next(get_db())
+    db.query(User).delete()
+    db.commit()
+    yield
+    db.rollback()
+
 # OAuth2 scheme for testing
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
@@ -74,10 +89,11 @@ async def override_get_current_user() -> User:
         user = result.scalar_one_or_none()
         
         if not user:
+            unique_id = uuid.uuid4().hex[:8]
             user = User(
-                email=TEST_USER_EMAIL,
-                username="testuser",
-                full_name="Test User",
+                email=f"user_{unique_id}@test.com",
+                username=f"user_{unique_id}",
+                full_name=f"Test User {unique_id}",
                 hashed_password=get_password_hash(TEST_USER_PASSWORD),
                 is_active=True,
                 is_superuser=False,

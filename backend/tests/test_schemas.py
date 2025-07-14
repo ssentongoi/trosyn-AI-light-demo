@@ -5,7 +5,7 @@ These simplified schemas are designed to avoid serialization issues with relatio
 and ensure proper validation during testing.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
@@ -37,15 +37,13 @@ class TestUserSchema(BaseModel):
     email: str
     full_name: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class TestDepartmentSchema(BaseModel):
     id: int
     name: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class TestDepartmentRequestCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
@@ -71,12 +69,12 @@ class TestDepartmentRequestResponse(BaseModel):
     department: Optional[TestDepartmentSchema] = None
     approver: Optional[TestUserSchema] = None
 
-    class Config:
-        from_attributes = True
-        # Allow datetime serialization
-        json_encoders = {
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={
             datetime: lambda v: v.isoformat()
         }
+    )
 
 class TestDepartmentRequestResponseWrapper(BaseModel):
     """Wrapper for API response with success flag and data"""

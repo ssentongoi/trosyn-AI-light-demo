@@ -19,6 +19,7 @@ import NotificationsPage from './pages/NotificationsPage';
 import DepartmentRequestPage from './pages/DepartmentRequestPage';
 import EditorDemo from './pages/EditorDemo';
 import EditorTestPage from './pages/EditorTestPage';
+import EditorPage from './pages/EditorPage';
 import './App.css';
 
 // A wrapper for protected routes
@@ -116,6 +117,11 @@ function App() {
           <Route path="editor-test" element={
             <ProtectedRoute>
               <EditorTestPage />
+            </ProtectedRoute>
+          } />
+          <Route path="editor" element={
+            <ProtectedRoute>
+              <EditorPage />
             </ProtectedRoute>
           } />
           <Route path="notifications" element={

@@ -1,11 +1,20 @@
 import { invoke } from '@tauri-apps/api/tauri';
-import { Document, DocumentVersion } from '@/types/tauri';
+import type { Document, DocumentVersion } from '@/types/tauri';
 
 /**
  * Check if running in Tauri desktop environment
  */
+// Check if running in Tauri desktop environment
+declare global {
+  interface Window {
+    __TAURI__?: {
+      invoke: <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
+    };
+  }
+}
+
 export const isTauri = (): boolean => {
-  return window.__TAURI__ !== undefined;
+  return typeof window !== 'undefined' && window.__TAURI__ !== undefined;
 };
 
 /**

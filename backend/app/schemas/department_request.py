@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field
+from pydantic import field_validator
 from enum import Enum
 
 # Enums for request status, priority, and type
@@ -59,7 +60,7 @@ class DepartmentRequestCreate(BaseModel):
     estimated_cost: Optional[int] = Field(None, ge=0, description="Estimated cost in cents")
     custom_fields: Optional[Dict[str, Any]] = None
     
-    @validator('due_date')
+    @field_validator('due_date')
     def validate_due_date(cls, v):
         if v and v.tzinfo:
             v = v.replace(tzinfo=None)
@@ -89,7 +90,7 @@ class DepartmentRequestUpdate(BaseModel):
     approver_id: Optional[int] = None
     custom_fields: Optional[Dict[str, Any]] = None
     
-    @validator('due_date')
+    @field_validator('due_date')
     def validate_due_date(cls, v):
         if v and v.tzinfo:
             v = v.replace(tzinfo=None)

@@ -13,7 +13,7 @@ from sqlalchemy.pool import StaticPool
 from app.db.base import Base
 from app.models import *  # Import all models to ensure they're registered with the metadata
 
-class TestDatabaseManager:
+class _DatabaseManager:
     """
     Manages test database lifecycle with proper schema creation
     """
@@ -54,7 +54,7 @@ class TestDatabaseManager:
         await self.engine.dispose()
 
 # Global test database manager
-test_db_manager = TestDatabaseManager()
+test_db_manager = _DatabaseManager()
 
 @pytest.fixture(scope="session")
 async def setup_test_database():

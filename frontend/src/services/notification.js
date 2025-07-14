@@ -1,75 +1,107 @@
 import api from './api';
 import { EventEmitter } from 'events';
+import { useWebSocketContext } from '../contexts/WebSocketContext';
+import { useCallback, useEffect, useRef } from 'react';
 
 // Create an event emitter instance for real-time notifications
 const notificationEmitter = new EventEmitter();
 
-// WebSocket connection for real-time updates
-let socket = null;
-let reconnectAttempts = 0;
-const maxReconnectAttempts = 5;
-const reconnectDelay = 5000; // 5 seconds
+// Create a custom hook for notification service
+const useNotificationService = () => {
+  const { isConnected, sendMessage, on: wsOn } = useWebSocketContext();
+  const isInitialized = useRef(false);
 
-/**
- * Connect to the WebSocket server for real-time notifications
- * @param {string} token - Authentication token
- * @param {Function} onReconnect - Callback when reconnected
- */
-const connectWebSocket = (token, onReconnect = null) => {
-  if (socket) {
-    socket.close();
-  }
-
-  // Get WebSocket URL from environment or use default
-  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = process.env.REACT_APP_WS_URL || `${wsProtocol}//${window.location.host}`;
-  
-  try {
-    socket = new WebSocket(`${wsUrl}/ws/notifications?token=${token}`);
-
-    socket.onopen = () => {
-      console.log('WebSocket connected');
-      reconnectAttempts = 0; // Reset reconnect attempts on successful connection
-      
-      if (onReconnect && typeof onReconnect === 'function') {
-        onReconnect();
-      }
-    };
-
-    socket.onmessage = (event) => {
-      try {
-        const notification = JSON.parse(event.data);
-        notificationEmitter.emit('notification', notification);
+  // Initialize WebSocket event listeners
+  useEffect(() => {
+    if (!isInitialized.current && isConnected) {
+      // Handle incoming notifications
+      const handleNotification = (message) => {
+        notificationEmitter.emit('notification', message);
         
         // Emit specific event based on notification type
-        if (notification.type) {
-          notificationEmitter.emit(notification.type, notification);
+        if (message.type) {
+          notificationEmitter.emit(message.type, message);
         }
-      } catch (error) {
-        console.error('Error parsing notification:', error);
-      }
-    };
-
-    socket.onclose = (event) => {
-      console.log('WebSocket disconnected:', event);
+      };
       
-      // Attempt to reconnect if not closed normally
-      if (event.code !== 1000 && reconnectAttempts < maxReconnectAttempts) {
-        reconnectAttempts++;
-        console.log(`Attempting to reconnect (${reconnectAttempts}/${maxReconnectAttempts})...`);
-        
-        setTimeout(() => {
-          connectWebSocket(token, onReconnect);
-        }, reconnectDelay * reconnectAttempts);
-      }
-    };
+      // Subscribe to all messages
+      const cleanup = wsOn('*', handleNotification);
+      
+      // Mark as initialized
+      isInitialized.current = true;
+      
+      // Cleanup on unmount
+      return () => {
+        cleanup();
+        isInitialized.current = false;
+      };
+    }
+  }, [isConnected, wsOn]);
 
-    socket.onerror = (error) => {
-      console.error('WebSocket error:', error);
+  // Send a notification through WebSocket
+  const sendNotification = useCallback((type, data = {}) => {
+    return sendMessage({
+      type,
+      ...data,
+      timestamp: new Date().toISOString()
+    });
+  }, [sendMessage]);
+
+  // Subscribe to a specific notification type
+  const subscribe = useCallback((type, callback) => {
+    notificationEmitter.on(type, callback);
+    // Return cleanup function
+    return () => {
+      notificationEmitter.off(type, callback);
     };
-  } catch (error) {
-    console.error('Error initializing WebSocket:', error);
-  }
+  }, []);
+
+  // Send typing indicator
+  const sendTypingIndicator = useCallback((recipientId, isTyping = true) => {
+    return sendNotification('typing', {
+      recipient_id: recipientId,
+      is_typing: isTyping
+    });
+  }, [sendNotification]);
+
+  // Send a direct message
+  const sendDirectMessage = useCallback((recipientId, message) => {
+    return sendNotification('message', {
+      recipient_id: recipientId,
+      message
+    });
+  }, [sendNotification]);
+
+  // Subscribe to a channel or topic
+  const subscribeToChannel = useCallback((channel) => {
+    return sendNotification('subscribe', {
+      channel
+    });
+  }, [sendNotification]);
+
+  return {
+    // Connection status
+    isConnected,
+    
+    // Event emitter methods
+    on: (event, listener) => {
+      notificationEmitter.on(event, listener);
+      return () => notificationEmitter.off(event, listener);
+    },
+    off: (event, listener) => notificationEmitter.off(event, listener),
+    once: (event, listener) => notificationEmitter.once(event, listener),
+    
+    // Notification methods
+    send: sendNotification,
+    subscribe,
+    sendTypingIndicator,
+    sendDirectMessage,
+    subscribeToChannel,
+    
+    // For compatibility with existing code
+    connect: () => {}, // No-op, connection is managed by WebSocketProvider
+    disconnect: () => {}, // No-op, connection is managed by WebSocketProvider
+  };
 };
 
 const notificationService = {
@@ -79,7 +111,7 @@ const notificationService = {
    */
   initialize(token) {
     if (token) {
-      connectWebSocket(token);
+      // No-op, connection is managed by WebSocketProvider
     }
   },
 

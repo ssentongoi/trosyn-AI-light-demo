@@ -14,7 +14,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from httpx import AsyncClient
-from sqlalchemy import event
+from sqlalchemy import event, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -48,10 +48,52 @@ test_engine = create_async_engine(
 TestingSessionLocal = async_sessionmaker(
     bind=test_engine,
     class_=AsyncSession,
-    expire_on_commit=False,
-    autoflush=False,
-    autocommit=False,
+    expire_on_commit=False,  # Prevents SQLAlchemy from expiring objects after commit
 )
+
+@pytest.fixture(scope="session")
+async def create_test_tables():
+    """Create all database tables once before any tests run."""
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield
+    # Clean up after all tests
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+
+@pytest.fixture(autouse=True)
+async def cleanup_database(create_test_tables):
+    """Clean up data while keeping tables between tests."""
+    # The create_test_tables fixture ensures tables exist
+    yield
+
+@pytest.fixture(autouse=True)
+async def cleanup_users():
+    """Cleanup users table before each test."""
+    async with TestingSessionLocal() as session:
+        # Check if table exists first
+        result = await session.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+        )
+        if result.scalar():
+            await session.execute(text("DELETE FROM users"))
+            await session.commit()
+    yield
+
+@pytest.fixture(autouse=True)
+async def cleanup_other_tables():
+    """Cleanup related tables before each test."""
+    async with TestingSessionLocal() as session:
+        # Check and clean each table if it exists
+        tables = ["department_requests", "departments", "companies"]
+        for table in tables:
+            result = await session.execute(
+                text(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table}'")
+            )
+            if result.scalar():
+                await session.execute(text(f"DELETE FROM {table}"))
+        await session.commit()
+    yield
 
 # ==============================================================================
 # Database Setup and Teardown

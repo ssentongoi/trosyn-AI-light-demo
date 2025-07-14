@@ -15,7 +15,7 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "types": ["vitest/globals", "@testing-library/jest-dom"],
+    "types": ["node", "vitest/globals", "@testing-library/jest-dom"],
     "typeRoots": [
       "./node_modules/@types",
       "./src/types"
@@ -26,10 +26,11 @@
     "baseUrl": "."
   },
   "include": [
-    "src",
-    "test",
+    "src/**/*",
+    "test/**/*",
     "src-tauri/tauri.d.ts",
-    "src/types/**/*.d.ts"
+    "src/types/**/*.d.ts",
+    "node_modules/@types/node/**/*.d.ts"
   ],
   "exclude": ["node_modules"],
   "references": [{ "path": "./tsconfig.node.json" }]

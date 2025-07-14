@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from pydantic import BaseModel
 
 from fastapi import FastAPI
+from fastapi.routing import APIRoute
 from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
@@ -225,7 +226,10 @@ async def test_data(db_session: AsyncSession) -> Dict[str, Any]:
 # Add this debugging code to the test file right before the test case
 print("Available routes:")
 for route in app.routes:
-    print(f"  {route.path} - {route.methods}")
+    if hasattr(route, "methods"):
+        print(f"  {route.path} - {route.methods}")
+    else:
+        print(f"  {route.path} - (WebSocket)")
 
 # Also verify the dependency override is correctly applied
 print("Dependency overrides:", app.dependency_overrides)

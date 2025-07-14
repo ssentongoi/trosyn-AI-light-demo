@@ -1,7 +1,7 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 import { Avatar, Box, Typography, useTheme, CircularProgress } from '@mui/material';
-import { tokens } from '../../../../theme';
+import { tokens } from 'src/theme/theme';
 import DashboardCard from '../DashboardCard';
 
 const TeamMembers = ({ members = [], loading = false, error = null }) => {

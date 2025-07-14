@@ -12,7 +12,7 @@ import {
   useMediaQuery
 } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
-import { tokens } from '../../../../theme';
+import { tokens } from 'src/theme/theme';
 import DashboardCard from '../DashboardCard';
 import MetricCard from '../MetricCard';
 import ResponsiveChart from '../ResponsiveChart';

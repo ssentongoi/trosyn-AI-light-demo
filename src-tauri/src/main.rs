@@ -59,6 +59,8 @@ fn main() {
             
             // Filesystem commands
             commands::filesystem::check_file_exists,
+            commands::filesystem::open_dialog,
+            commands::filesystem::read_file,
         ])
         .on_window_event(|_window, event| {
             // Handle window close event to save any unsaved changes

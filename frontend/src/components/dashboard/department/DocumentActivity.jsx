@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import PropTypes from 'prop-types';
 import { Box, Typography, useTheme, CircularProgress } from '@mui/material';
-import { tokens } from '../../../../theme';
+import { tokens } from 'src/theme/theme';
 import DashboardCard from '../DashboardCard';
 import { Timeline, TimelineItem, TimelineSeparator, TimelineConnector, TimelineContent, TimelineDot } from '@mui/lab';
 import { Article, Description, CloudUpload, Search, Share } from '@mui/icons-material';
