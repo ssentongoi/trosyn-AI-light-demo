@@ -7,14 +7,14 @@ for text generation, embeddings, and document processing.
 
 # Import base classes
 from .base import BaseAIProvider, DocumentProcessor
+from .document_processor import UnstructuredDocumentProcessor
 
 # Import provider implementations
 from .gemini import GeminiProvider
-from .document_processor import UnstructuredDocumentProcessor
 
 __all__ = [
-    'BaseAIProvider',
-    'DocumentProcessor',
-    'GeminiProvider',
-    'UnstructuredDocumentProcessor',
+    "BaseAIProvider",
+    "DocumentProcessor",
+    "GeminiProvider",
+    "UnstructuredDocumentProcessor",
 ]

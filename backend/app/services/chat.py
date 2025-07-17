@@ -1,26 +1,28 @@
+import logging
 import uuid
 from datetime import datetime
-from typing import List, Optional, Tuple, Dict, Any, AsyncGenerator
-from sqlalchemy import select, delete
-from sqlalchemy.orm import selectinload, load_only, load_only
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.exc import SQLAlchemyError
-from fastapi import HTTPException, status
-import logging
+from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
-from app.models.chat import ChatMessage, ChatConversation, MessageRole
+from fastapi import HTTPException, status
+from sqlalchemy import delete, select
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only, selectinload
+
+from app.models.chat import ChatConversation, ChatMessage, MessageRole
+from app.models.user import User
 from app.schemas.chat import (
-    ChatMessageCreate,
-    ChatMessageInDB,
     ChatConversationCreate,
     ChatConversationInDB,
     ChatConversationWithMessages,
-    ChatRequest
+    ChatMessageCreate,
+    ChatMessageInDB,
+    ChatRequest,
 )
-from app.models.user import User
 from app.services.ai_service import ai_service
 
 logger = logging.getLogger(__name__)
+
 
 class ChatService:
     """Service class for handling chat-related operations."""
@@ -51,7 +53,10 @@ class ChatService:
         """
         stmt = (
             select(ChatConversation)
-            .where(ChatConversation.id == conversation_id, ChatConversation.user_id == user_id)
+            .where(
+                ChatConversation.id == conversation_id,
+                ChatConversation.user_id == user_id,
+            )
             .options(
                 # Use selectinload for the one-to-many relationship
                 selectinload(ChatConversation.messages).options(
@@ -65,12 +70,12 @@ class ChatService:
                         ChatMessage.role,
                         ChatMessage.content,
                         ChatMessage.created_at,
-                        ChatMessage.updated_at
+                        ChatMessage.updated_at,
                     )
                 )
             )
         )
-        
+
         result = await db.execute(stmt)
         conversation = result.scalar_one_or_none()
 
@@ -109,7 +114,8 @@ class ChatService:
         conversation = ChatConversation(
             id=str(uuid.uuid4()),
             user_id=user_id,
-            title=conversation_data.title or f"Conversation {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}",
+            title=conversation_data.title
+            or f"Conversation {datetime.utcnow().strftime('%Y-%m-%d %H:%M')}",
         )
         db.add(conversation)
         await db.commit()
@@ -117,7 +123,9 @@ class ChatService:
         return ChatConversationInDB.model_validate(conversation)
 
     @classmethod
-    async def delete_conversation(cls, db: AsyncSession, user_id: int, conversation_id: str):
+    async def delete_conversation(
+        cls, db: AsyncSession, user_id: int, conversation_id: str
+    ):
         """Delete a conversation and all its messages."""
         stmt = delete(ChatConversation).where(
             ChatConversation.id == conversation_id, ChatConversation.user_id == user_id
@@ -154,7 +162,7 @@ class ChatService:
             role=message_data.role,
             content=message_data.content,
             user_id=user_id,
-            conversation_id=conversation_id
+            conversation_id=conversation_id,
         )
         db.add(message)
         conversation.updated_at = datetime.utcnow()
@@ -171,7 +179,7 @@ class ChatService:
             message_data = ChatMessageCreate(
                 role=MessageRole.USER,
                 content=chat_request.message,
-                conversation_id=chat_request.conversation_id
+                conversation_id=chat_request.conversation_id,
             )
             user_message, is_new_conversation = await cls.add_message(
                 db=db, user_id=user.id, message_data=message_data
@@ -180,43 +188,51 @@ class ChatService:
             conversation = await cls.get_conversation_with_messages(
                 db=db, user_id=user.id, conversation_id=user_message.conversation_id
             )
-            
-            history = [{"role": msg.role, "content": msg.content} for msg in conversation.messages]
+
+            history = [
+                {"role": msg.role, "content": msg.content}
+                for msg in conversation.messages
+            ]
 
             ai_response_content = await ai_service.process_chat(
                 user_message=chat_request.message,
                 conversation_history=history,
-                stream=chat_request.stream
+                stream=chat_request.stream,
             )
 
             if chat_request.stream:
+
                 async def stream_generator():
                     yield f'data: {{"conversation_id": "{user_message.conversation_id}", "is_new_conversation": {str(is_new_conversation).lower()}}}\n\n'
                     full_response = ""
                     async for chunk in ai_response_content:
                         full_response += chunk
                         yield f'data: {{"response": "{chunk}"}}\n\n'
-                    
+
                     ai_message_data = ChatMessageCreate(
                         role=MessageRole.ASSISTANT,
                         content=full_response,
-                        conversation_id=user_message.conversation_id
+                        conversation_id=user_message.conversation_id,
                     )
-                    await cls.add_message(db=db, user_id=user.id, message_data=ai_message_data)
+                    await cls.add_message(
+                        db=db, user_id=user.id, message_data=ai_message_data
+                    )
 
                 return {"stream": stream_generator()}
 
             ai_message_data = ChatMessageCreate(
                 role=MessageRole.ASSISTANT,
                 content=ai_response_content,
-                conversation_id=user_message.conversation_id
+                conversation_id=user_message.conversation_id,
             )
-            ai_message, _ = await cls.add_message(db=db, user_id=user.id, message_data=ai_message_data)
+            ai_message, _ = await cls.add_message(
+                db=db, user_id=user.id, message_data=ai_message_data
+            )
 
             return {
                 "conversation_id": user_message.conversation_id,
                 "is_new_conversation": is_new_conversation,
-                "response": ai_message.content
+                "response": ai_message.content,
             }
         except SQLAlchemyError as e:
             await db.rollback()
@@ -224,9 +240,9 @@ class ChatService:
             raise HTTPException(status_code=500, detail="A database error occurred.")
         except Exception as e:
             logger.error(f"Error processing chat request: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="An unexpected error occurred.")            
+            raise HTTPException(status_code=500, detail="An unexpected error occurred.")
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to generate AI response: {str(e)}"
+                detail=f"Failed to generate AI response: {str(e)}",
             )

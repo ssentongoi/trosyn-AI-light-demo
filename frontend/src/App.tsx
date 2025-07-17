@@ -1,45 +1,23 @@
-import React, { useEffect } from 'react';
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { MemoryProvider } from './contexts/MemoryContext';
-import { WebSocketProvider } from './contexts/WebSocketContext';
+import { WebSocketProvider, useWebSocket } from './contexts/WebSocketContext';
+import { DocumentProvider } from './contexts/DocumentContext';
 import Layout from './components/layout/Layout';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
-import SuperadminDashboard from './pages/SuperadminDashboard';
-import AdminDashboard from './pages/AdminDashboard';
-import CompanyHub from './pages/CompanyHub';
-import LicensingSync from './pages/LicensingSync';
-import MemoryManagement from './pages/MemoryManagement';
-import DeviceRegistration from './pages/DeviceRegistration';
-import DepartmentDashboard from './pages/DepartmentDashboard';
-import AIAssistant from './pages/AIAssistant';
-import DocumentsPage from './pages/DocumentsPage';
-import NotificationsPage from './pages/NotificationsPage';
-import DepartmentRequestPage from './pages/DepartmentRequestPage';
 import EditorPage from './pages/EditorPage';
-import { UserRole } from './types';
+import Documents from './pages/Documents';
+import RecoveryDialog from './components/dialogs/RecoveryDialog';
+import { DocumentService } from './services/DocumentService';
+import { isTauri } from './utils/environment';
 import './App.css';
 
 // A wrapper for protected routes
-interface ProtectedRouteProps {
-  children: React.ReactNode;
-  requiredRole?: UserRole;
-}
-
-const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ 
-  children, 
-  requiredRole 
-}) => {
-  const { isAuthenticated, user, loading, error } = useApp();
-  const location = useLocation();
-
-  useEffect(() => {
-    if (error) {
-      console.error('Authentication error:', error);
-    }
-  }, [error]);
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated, loading } = useApp();
 
   if (loading) {
     return (
@@ -50,137 +28,148 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   }
 
   if (!isAuthenticated) {
-    // Redirect to login, but save the location they were trying to go to
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
-
-  if (requiredRole && user?.role !== requiredRole) {
-    // Redirect to unauthorized or dashboard based on user role
-    return <Navigate to="/unauthorized" replace />;
+    return <Navigate to="/login" replace />;
   }
 
   return <>{children}</>;
 };
 
-// Wrapper component to provide memory context to authenticated users
-const AuthenticatedApp: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated } = useApp();
-  
-  if (!isAuthenticated) {
-    return <>{children}</>;
-  }
-
-  return <MemoryProvider>{children}</MemoryProvider>;
-};
-
 // WebSocket connection status indicator
 const WebSocketStatus: React.FC = () => {
-  const { isConnected } = useWebSocketContext();
+  const { isConnected } = useWebSocket();
   
   if (isConnected) return null;
   
   return (
     <div className="fixed bottom-4 right-4 bg-yellow-500 text-white px-4 py-2 rounded-md shadow-lg">
-      <div className="flex items-center">
-        <span className="relative flex h-3 w-3 mr-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-        </span>
-        <span>Reconnecting to server...</span>
-      </div>
+      <p>Connection lost. Reconnecting...</p>
     </div>
   );
 };
 
+// Main App component
 const App: React.FC = () => {
+  const [showRecovery, setShowRecovery] = useState(false);
+  const [isCheckingRecovery, setIsCheckingRecovery] = useState(true);
+
+  useEffect(() => {
+    const checkForRecovery = async () => {
+      if (!isTauri) {
+        setIsCheckingRecovery(false);
+        return;
+      }
+
+      try {
+        const recoveryFiles = await DocumentService.getInstance().checkForRecoveryFiles();
+        if (recoveryFiles.length > 0) {
+          setShowRecovery(true);
+        }
+      } catch (error) {
+        console.error('Error checking for recovery files:', error);
+      } finally {
+        setIsCheckingRecovery(false);
+      }
+    };
+
+    checkForRecovery();
+  }, []);
+
+  const handleRecoveryClose = (content?: string, filePath?: string) => {
+    setShowRecovery(false);
+    // In a real implementation, we would handle the recovered content
+    if (content && filePath) {
+      console.log('Recovering document:', filePath);
+      // Here you would navigate to the editor with the recovered content
+    }
+  };
+
+  if (isCheckingRecovery) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
+
   return (
     <AppProvider>
       <WebSocketProvider>
-        <AuthenticatedApp>
-          <WebSocketStatus />
-          <Routes>
-            {/* Public routes */}
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            
-            {/* Protected routes */}
-            <Route 
-              path="/" 
-              element={
-                <ProtectedRoute>
-                  <Layout />
-                </ProtectedRoute>
-              }
-            >
-              <Route index element={<Dashboard />} />
-              <Route path="dashboard" element={<Dashboard />} />
-              <Route path="superadmin" element={
-                <ProtectedRoute requiredRole={UserRole.SUPERADMIN}>
-                  <SuperadminDashboard />
-                </ProtectedRoute>
-              } />
-              <Route path="admin" element={
-                <ProtectedRoute requiredRole={UserRole.ADMIN}>
-                  <AdminDashboard />
-                </ProtectedRoute>
-              } />
-              <Route path="company-hub" element={
-                <ProtectedRoute>
-                  <CompanyHub />
-                </ProtectedRoute>
-              } />
-              <Route path="licensing" element={
-                <ProtectedRoute>
-                  <LicensingSync />
-                </ProtectedRoute>
-              } />
-              <Route path="memory" element={
-                <ProtectedRoute>
-                  <MemoryManagement />
-                </ProtectedRoute>
-              } />
-              <Route path="device-registration" element={
-                <ProtectedRoute>
-                  <DeviceRegistration />
-                </ProtectedRoute>
-              } />
-              <Route path="department" element={
-                <ProtectedRoute>
-                  <DepartmentDashboard />
-                </ProtectedRoute>
-              } />
-              <Route path="ai-assistant" element={
-                <ProtectedRoute>
-                  <AIAssistant />
-                </ProtectedRoute>
-              } />
-              <Route path="documents" element={
-                <ProtectedRoute>
-                  <DocumentsPage />
-                </ProtectedRoute>
-              } />
-              <Route path="notifications" element={
-                <ProtectedRoute>
-                  <NotificationsPage />
-                </ProtectedRoute>
-              } />
-              <Route path="department-request" element={
-                <ProtectedRoute>
-                  <DepartmentRequestPage />
-                </ProtectedRoute>
-              } />
-              <Route path="editor" element={
-                <ProtectedRoute>
-                  <EditorPage />
-                </ProtectedRoute>
-              } />
-            </Route>
-            
-            {/* Fallback route */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </AuthenticatedApp>
+        <MemoryProvider>
+          <DocumentProvider>
+            <WebSocketStatus />
+            <Router>
+              <Routes>
+              {/* Public routes */}
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              
+              {/* Protected routes */}
+              <Route 
+                path="/" 
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Dashboard />
+                    </Layout>
+                  </ProtectedRoute>
+                } 
+              />
+              
+              <Route 
+                path="/editor" 
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <EditorPage />
+                    </Layout>
+                  </ProtectedRoute>
+                } 
+              />
+              
+              <Route 
+                path="/editor/:documentId" 
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <EditorPage />
+                    </Layout>
+                  </ProtectedRoute>
+                } 
+              />
+              
+              <Route 
+                path="/documents" 
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Documents />
+                    </Layout>
+                  </ProtectedRoute>
+                } 
+              />
+              
+              <Route 
+                path="/documents/:documentId" 
+                element={
+                  <ProtectedRoute>
+                    <Layout>
+                      <Documents />
+                    </Layout>
+                  </ProtectedRoute>
+                } 
+              />
+              
+              {/* Fallback route */}
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </Router>
+          </DocumentProvider>
+        </MemoryProvider>
       </WebSocketProvider>
+      <RecoveryDialog 
+        open={showRecovery} 
+        onClose={handleRecoveryClose} 
+      />
     </AppProvider>
   );
 };

@@ -1,6 +1,8 @@
-from pydantic import BaseModel, ConfigDict
-from typing import Optional, List, Dict, Any
 from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, ConfigDict
+
 
 # Base schema for DocumentVersion
 class DocumentVersionBase(BaseModel):
@@ -10,6 +12,7 @@ class DocumentVersionBase(BaseModel):
     mime_type: str
     created_by: Optional[str] = None
 
+
 # Schema for responses
 class DocumentVersionResponse(DocumentVersionBase):
     id: int
@@ -17,6 +20,7 @@ class DocumentVersionResponse(DocumentVersionBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
 
 # Base schema for Document
 class DocumentBase(BaseModel):
@@ -26,15 +30,18 @@ class DocumentBase(BaseModel):
     file_extension: Optional[str] = None
     metadata_: Optional[Dict[str, Any]] = None
 
+
 # Schema for creating a document (not directly used in API, but good practice)
 class DocumentCreate(DocumentBase):
     created_by: Optional[str] = None
+
 
 # Schema for updating a document's metadata
 class DocumentUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     metadata_: Optional[Dict[str, Any]] = None
+
 
 # Schema for document responses
 class DocumentResponse(DocumentBase):

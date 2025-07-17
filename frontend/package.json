@@ -11,7 +11,8 @@
     "@mui/icons-material": "^5.14.3",
     "@mui/lab": "^5.0.0-alpha.152",
     "@mui/material": "^5.14.3",
-    "@tauri-apps/api": "^2.6.0",
+    "@tanstack/react-query": "^4.32.0",
+    "@types/date-fns": "^2.5.3",
     "axios": "^1.5.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -20,10 +21,13 @@
     "web-vitals": "^2.1.4"
   },
   "scripts": {
-    "start": "DISABLE_ESLINT_PLUGIN=true react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest",
+    "tauri": "tauri",
+    "lint": "eslint --ext .js,.jsx,.ts,.tsx src",
+    "type-check": "tsc --noEmit"
   },
   "eslintConfig": {
     "extends": [
@@ -45,11 +49,27 @@
   },
   "proxy": "http://localhost:8000",
   "devDependencies": {
+    "@tauri-apps/api": "^2.6.0",
     "@tauri-apps/cli": "^2.6.2",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^24.0.14",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
+    "@types/react-dropzone": "^4.2.2",
+    "@types/testing-library__jest-dom": "^5.14.9",
     "@types/testing-library__react": "^10.0.1",
+    "@types/testing-library__user-event": "^4.1.1",
+    "@types/uuid": "^10.0.0",
+    "@vitejs/plugin-react": "^4.6.0",
     "ajv": "^6.12.6",
-    "ajv-keywords": "^3.5.2"
+    "ajv-keywords": "^3.5.2",
+    "date-fns": "^4.1.0",
+    "typescript": "^5.8.3",
+    "vite-plugin-checker": "^0.10.0",
+    "vitest": "^0.34.6"
   }
 }

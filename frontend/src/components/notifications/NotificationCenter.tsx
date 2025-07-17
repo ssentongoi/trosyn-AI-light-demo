@@ -57,14 +57,17 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
     if (!isConnected) return;
     
     const handleNewNotification = (message: any) => {
-      if (message.type === 'notification') {
+      if (message?.type === 'notification') {
         const newNotification: Notification = {
-          id: message.id || Date.now().toString(),
+          id: message.id || `notif-${Date.now()}`,
           title: message.title || 'New Notification',
           message: message.message || '',
-          type: message.notificationType || 'info',
+          type: (['success', 'error', 'warning', 'info', 'default'].includes(message.notificationType) 
+            ? message.notificationType 
+            : 'info') as NotificationType,
           timestamp: message.timestamp || new Date().toISOString(),
           read: false,
+          archived: false,
           action: message.action,
           data: message.data
         };
@@ -85,11 +88,17 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
       }
     };
     
-    // Subscribe to notification messages
-    sendMessage({
-      type: 'subscribe',
-      channel: 'notifications'
-    });
+    const handleSubscribe = (channel: string) => {
+      const message = {
+        id: `sub-${Date.now()}`,
+        type: 'subscribe',
+        channel,
+        timestamp: new Date().toISOString()
+      };
+      sendMessage(message);
+    };
+
+    handleSubscribe('notifications');
     
     // Set up message handler
     const unsubscribe = (window as any).__webSocketHandlers?.set('notification', handleNewNotification);
@@ -99,11 +108,16 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
         unsubscribe();
       }
       
-      // Unsubscribe from notifications
-      sendMessage({
-        type: 'unsubscribe',
-        channel: 'notifications'
-      });
+      const handleUnsubscribe = (channel: string) => {
+        sendMessage({
+          id: `unsub-${Date.now()}`,
+          type: 'unsubscribe',
+          channel,
+          timestamp: new Date().toISOString(),
+        } as WebSocketMessage<{ channel: string }>);
+      };
+
+      handleUnsubscribe('notifications');
     };
   }, [isConnected, sendMessage, autoClose, maxNotifications]);
 
@@ -116,20 +130,22 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
     setAnchorEl(null);
   };
 
-  const handleMarkAsRead = useCallback((id: string) => {
+  const handleMarkAsRead = useCallback((notificationId: string) => {
     setNotifications(prev => 
       prev.map(notification => 
-        notification.id === id 
+        notification.id === notificationId 
           ? { ...notification, read: true } 
           : notification
       )
     );
     
-    // Send read receipt to server
-    sendMessage({
-      type: 'notification_read',
-      notificationId: id
-    });
+    const message = {
+      id: `mark-read-${Date.now()}`,
+      type: 'mark_as_read',
+      notificationId,
+      timestamp: new Date().toISOString()
+    };
+    sendMessage(message);
   }, [sendMessage]);
 
   const handleMarkAllAsRead = useCallback(() => {
@@ -140,19 +156,23 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
       }))
     );
     
-    // Mark all as read on server
-    sendMessage({
-      type: 'mark_all_read'
-    });
+    const message = {
+      id: `mark-all-read-${Date.now()}`,
+      type: 'mark_all_read',
+      timestamp: new Date().toISOString()
+    };
+    sendMessage(message);
   }, [sendMessage]);
 
   const handleClearAll = useCallback(() => {
     setNotifications([]);
     
-    // Clear all notifications on server
-    sendMessage({
-      type: 'clear_notifications'
-    });
+    const message = {
+      id: `clear-all-${Date.now()}`,
+      type: 'clear_notifications',
+      timestamp: new Date().toISOString()
+    };
+    sendMessage(message);
   }, [sendMessage]);
 
   const getNotificationIcon = (type: NotificationType) => {
@@ -283,19 +303,16 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
                 <React.Fragment key={notification.id}>
                   <ListItem 
                     alignItems="flex-start"
+                    onClick={() => handleMarkAsRead(notification.id)}
                     sx={{
                       bgcolor: notification.read ? 'background.paper' : 'action.hover',
                       borderLeft: `4px solid ${getNotificationColor(notification.type as NotificationType)}`,
                       '&:hover': {
                         bgcolor: 'action.hover',
                       },
+                      cursor: 'pointer'
                     }}
                   >
-                    <ListItemAvatar>
-                      <Avatar sx={{ bgcolor: 'transparent' }}>
-                        {getNotificationIcon(notification.type as NotificationType)}
-                      </Avatar>
-                    </ListItemAvatar>
                     <ListItemText
                       primary={
                         <Box display="flex" justifyContent="space-between" alignItems="center">
@@ -323,22 +340,18 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
                               size="small" 
                               variant="outlined" 
                               color="primary"
-                              onClick={() => {
-                                if (notification.action) {
-                                  // Execute action if provided
-                                  notification.action(notification.data);
-                                }
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                notification.action?.callback();
                                 handleMarkAsRead(notification.id);
                               }}
                               sx={{ mt: 1 }}
                             >
-                              {notification.actionLabel || 'View'}
+                              {notification.action.label || 'View'}
                             </Button>
                           )}
                         </>
                       }
-                      onClick={() => handleMarkAsRead(notification.id)}
-                      sx={{ cursor: 'pointer' }}
                     />
                     <IconButton 
                       size="small" 

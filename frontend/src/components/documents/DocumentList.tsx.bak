@@ -1,0 +1,1216 @@
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useDocumentApi } from '../../contexts/DocumentApiContext';
+import { format, formatDistanceToNow } from 'date-fns';
+import { alpha, useTheme, styled, Box, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination, TableSortLabel, Checkbox, IconButton, Tooltip, TextField, InputAdornment, Typography, Chip, Menu, MenuItem, ListItemIcon, ListItemText, CircularProgress, Button, Stack, Select, FormControl, InputLabel, SelectChangeEvent, Skeleton, Alert, AlertTitle, Badge, Avatar, Card, CardHeader, CardContent, CardActions, Grid, ListItem, ListItemButton, ListItemSecondaryAction, Switch, FormGroup, FormControlLabel, Divider, ToggleButton, ToggleButtonGroup, LinearProgress, Fade, Zoom, Grow, Slide } from '@mui/material';
+import { Search as SearchIcon, FilterList as FilterListIcon, CloudUpload as CloudUploadIcon, Refresh as RefreshIcon, MoreVert as MoreVertIcon, DescriptionOutlined as DocumentIcon, Edit as EditIcon, Delete as DeleteIcon, Visibility as VisibilityIcon, GetApp as DownloadIcon, Share as ShareIcon, Star as StarIcon, StarBorder as StarBorderIcon, GridView as GridViewIcon, ViewList as ViewListIcon, TableChart as TableChartIcon, Sort as SortIcon, CreateNewFolder as CreateNewFolderIcon, MoreHoriz as MoreHorizIcon, Warning as WarningIcon, Error as ErrorIcon, CheckCircle as CheckCircleIcon, Folder as FolderIcon, FolderOpen as FolderOpenIcon, TextSnippet as TextSnippetIcon, PictureAsPdf as PdfIcon, InsertDriveFile as FileIcon, Image as ImageIcon, Code as CodeIcon, AudioFile as AudioIcon, VideoFile as VideoIcon, Archive as ArchiveIcon, InsertDriveFileOutlined as UnknownFileIcon, CloudDownload as CloudDownloadIcon, CloudDone as CloudDoneIcon, CloudOff as CloudOffIcon, Info as InfoIcon, Public as PublicIcon, Lock as LockIcon } from '@mui/icons-material';
+import DocumentUploader from './DocumentUploader';
+
+// Types
+export interface DocumentOwner {
+  id: string;
+  name: string;
+  email?: string;
+  avatar?: string;
+}
+
+export interface DocumentVersion {
+  id: string;
+  version: number;
+  createdAt: string;
+  size: number;
+  url: string;
+  mimeType: string;
+}
+
+export interface DocumentTag {
+  id: string;
+  name: string;
+  color?: string;
+}
+
+export interface EnhancedDocument {
+  id: string;
+  name: string;
+  description?: string;
+  mimeType: string;
+  size: number;
+  url: string;
+  thumbnailUrl?: string;
+  isStarred?: boolean;
+  isShared?: boolean;
+  isPublic?: boolean;
+  isTrashed?: boolean;
+  createdAt: string;
+  updatedAt: string;
+  owner: DocumentOwner;
+  lastModifiedBy?: DocumentOwner;
+  tags?: DocumentTag[];
+  versions?: DocumentVersion[];
+  permissions?: {
+    canView: boolean;
+    canEdit: boolean;
+    canDelete: boolean;
+    canShare: boolean;
+    canDownload: boolean;
+  };
+  metadata?: Record<string, any>;
+  isSelected?: boolean; // For selection state
+}
+
+export interface DocumentFilter {
+  search?: string;
+  ownerId?: string;
+  mimeType?: string;
+  tags?: string[];
+  isStarred?: boolean;
+  isShared?: boolean;
+  isPublic?: boolean;
+  isTrashed?: boolean;
+  dateFrom?: string;
+  dateTo?: string;
+  sizeMin?: number;
+  sizeMax?: number;
+  [key: string]: any; // Allow additional filter properties
+}
+
+export interface DocumentSort {
+  field: string;
+  direction: 'asc' | 'desc';
+}
+
+export interface DocumentListProps {
+  // Document actions
+  onDocumentSelect?: (document: EnhancedDocument) => void;
+  onDocumentEdit?: (document: EnhancedDocument) => void;
+  onDocumentDelete?: (document: EnhancedDocument) => void;
+  onDocumentDownload?: (document: EnhancedDocument) => void;
+  onDocumentShare?: (document: EnhancedDocument) => void;
+  onDocumentStar?: (document: EnhancedDocument, isStarred: boolean) => void;
+  onDocumentUploadComplete?: (document: EnhancedDocument, file: File) => void;
+  onDocumentClick?: (document: EnhancedDocument, event: React.MouseEvent) => void;
+  onDocumentDoubleClick?: (document: EnhancedDocument, event: React.MouseEvent) => void;
+  
+  // Display
+  viewMode?: 'grid' | 'list' | 'table';
+  showThumbnails?: boolean;
+  showFileIcons?: boolean;
+  showFileSizes?: boolean;
+  showLastModified?: boolean;
+  showOwners?: boolean;
+  showSharingStatus?: boolean;
+  showTags?: boolean;
+  showStarToggle?: boolean;
+  showSelectionCheckbox?: boolean;
+  showToolbar?: boolean;
+  showSearch?: boolean;
+  showFilters?: boolean;
+  showSort?: boolean;
+  showViewToggle?: boolean;
+  showUploadButton?: boolean;
+  showNewFolderButton?: boolean;
+  showRefreshButton?: boolean;
+  showMoreActionsButton?: boolean;
+  showPagination?: boolean;
+  showStatusBar?: boolean;
+  showEmptyState?: boolean;
+  showLoadingState?: boolean;
+  showErrorState?: boolean;
+  showNoResultsState?: boolean;
+  
+  // Selection
+  selectable?: boolean;
+  multiSelect?: boolean;
+  selectedDocuments?: string[];
+  defaultSelectedDocuments?: string[];
+  onSelectedDocumentsChange?: (selectedIds: string[]) => void;
+  
+  // Filtering & Sorting
+  filters?: DocumentFilter;
+  defaultFilters?: DocumentFilter;
+  onFiltersChange?: (filters: DocumentFilter) => void;
+  sort?: DocumentSort;
+  defaultSort?: DocumentSort;
+  onSortChange?: (sort: DocumentSort) => void;
+  
+  // Pagination
+  page?: number;
+  pageSize?: number;
+  totalCount?: number;
+  onPageChange?: (page: number) => void;
+  onPageSizeChange?: (pageSize: number) => void;
+  
+  // Loading & Error
+  loading?: boolean;
+  error?: Error | string | null;
+  documents?: EnhancedDocument[];
+  
+  // I18n
+  i18n?: {
+    searchPlaceholder?: string;
+    noDocuments?: string;
+    loadingDocuments?: string;
+    errorLoadingDocuments?: string;
+    noSearchResults?: string;
+    selectAll?: string;
+    deselectAll?: string;
+    selectedCount?: string;
+    upload?: string;
+    newFolder?: string;
+    refresh?: string;
+    moreActions?: string;
+    name?: string;
+    size?: string;
+    modified?: string;
+    type?: string;
+    owner?: string;
+    status?: string;
+    actions?: string;
+    firstPage?: string;
+    lastPage?: string;
+    previousPage?: string;
+    nextPage?: string;
+    rowsPerPage?: string;
+    of?: string;
+    filter?: string;
+    sort?: string;
+    view?: string;
+    gridView?: string;
+    listView?: string;
+    tableView?: string;
+    [key: string]: any; // Allow additional i18n keys
+  };
+  
+  // Other
+  enableDragAndDrop?: boolean;
+  className?: string;
+  style?: React.CSSProperties;
+  onContextMenu?: (event: React.MouseEvent, document: EnhancedDocument) => void;
+}
+
+const DocumentList: React.FC<DocumentListProps> = ({
+  // Document actions
+  onDocumentSelect,
+  onDocumentEdit,
+  onDocumentDelete,
+  onDocumentDownload,
+  onDocumentShare,
+  onDocumentStar,
+  
+  // Display
+  viewMode = 'table',
+  showThumbnails = true,
+  showFileIcons = true,
+  showFileSizes = true,
+  showLastModified = true,
+  showOwners = true,
+  showSharingStatus = true,
+  showTags = true,
+  showStarToggle = true,
+  showSelectionCheckbox = true,
+  showToolbar = true,
+  showSearch = true,
+  showFilters = true,
+  showSort = true,
+  showViewToggle = true,
+  showUploadButton = true,
+  showNewFolderButton = false,
+  showRefreshButton = true,
+  showMoreActionsButton = true,
+  showPagination = true,
+  showStatusBar = false,
+  showEmptyState = true,
+  showLoadingState = true,
+  showErrorState = true,
+  showNoResultsState = true,
+  
+  // Selection
+  selectable = true,
+  multiSelect = true,
+  selectedDocuments: externalSelectedDocuments = [],
+  defaultSelectedDocuments = [],
+  onSelectedDocumentsChange,
+  
+  // Filtering & Sorting
+  filters: externalFilters,
+  defaultFilters = {},
+  onFiltersChange,
+  sort: externalSort,
+  defaultSort = { field: 'updated_at', direction: 'desc' as const },
+  onSortChange,
+  
+  // Pagination
+  page: externalPage,
+  pageSize: externalPageSize = 10,
+  totalCount: externalTotalCount,
+  onPageChange: externalOnPageChange,
+  onPageSizeChange: externalOnPageSizeChange,
+  
+  // Loading & Error
+  loading: externalLoading,
+  error: externalError,
+  documents: externalDocuments,
+  
+  // I18n
+  i18n: externalI18n = {},
+  
+  // Other
+  enableDragAndDrop = false,
+  ...props
+}) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+    const {
+    documentList: { documents: apiDocuments, loading: apiLoading, error: apiError, fetchDocuments, uploadDocument, apiConfig },
+    pagination: contextPagination
+  } = useDocumentApi();
+  
+  // State
+  const [internalDocuments, setInternalDocuments] = useState<EnhancedDocument[]>([]);
+  const [internalSelectedDocuments, setInternalSelectedDocuments] = useState<string[]>(defaultSelectedDocuments);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [appliedFilters, setAppliedFilters] = useState<DocumentFilter>(defaultFilters);
+  const [sortBy, setSortBy] = useState<string>(defaultSort.field);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(defaultSort.direction);
+  const [pagination, setPagination] = useState({ page: 0, pageSize: 10 });
+  const [internalPage, setInternalPage] = useState(1);
+  const [internalPageSize, setInternalPageSize] = useState(externalPageSize);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [selectedDocument, setSelectedDocument] = useState<EnhancedDocument | null>(null);
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [filterAnchorEl, setFilterAnchorEl] = useState<null | HTMLElement>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<Error | string | null>(null);
+  
+  // Merge i18n defaults with provided i18n
+  const i18n = useMemo(() => ({
+    searchPlaceholder: 'Search documents...',
+    noDocuments: 'No documents found',
+    loadingDocuments: 'Loading documents...',
+    errorLoadingDocuments: 'Error loading documents',
+    noSearchResults: 'No documents match your search',
+    selectAll: 'Select all',
+    deselectAll: 'Deselect all',
+    selectedCount: 'selected',
+    upload: 'Upload',
+    newFolder: 'New folder',
+    refresh: 'Refresh',
+    moreActions: 'More actions',
+    name: 'Name',
+    size: 'Size',
+    modified: 'Modified',
+    type: 'Type',
+    owner: 'Owner',
+    status: 'Status',
+    actions: 'Actions',
+    firstPage: 'First page',
+    lastPage: 'Last page',
+    previousPage: 'Previous page',
+    nextPage: 'Next page',
+    rowsPerPage: 'Rows per page:',
+    of: 'of',
+    filter: 'Filter',
+    sort: 'Sort',
+    view: 'View',
+    gridView: 'Grid view',
+    listView: 'List view',
+    tableView: 'Table view',
+    ...externalI18n
+  }), [externalI18n]);
+  
+  // Determine if using controlled or uncontrolled state
+  const isControlled = externalDocuments !== undefined;
+  const documents = externalDocuments ?? apiDocuments ?? [];
+  const loading = externalLoading ?? apiLoading;
+  const errorState = externalError ?? apiError ?? error;
+  
+  const selectedDocuments = externalSelectedDocuments ?? internalSelectedDocuments;
+  const onSelectedDocumentsChangeCallback = onSelectedDocumentsChange ?? setInternalSelectedDocuments;
+
+  // Update internal documents when documents prop changes
+  useEffect(() => {
+    if (documents && documents.length > 0) {
+      setInternalDocuments(documents.map(doc => ({
+        ...doc,
+        isSelected: externalSelectedDocuments.includes(doc.id)
+      })));
+    }
+  }, [documents, externalSelectedDocuments]);
+  
+  // Handle selection
+  const handleSelectDocument = useCallback((documentId: string, selected: boolean) => {
+    if (!selectable) return;
+    
+    if (multiSelect) {
+      const newSelected = selected 
+        ? [...externalSelectedDocuments, documentId]
+        : externalSelectedDocuments.filter(id => id !== documentId);
+      
+      if (onSelectedDocumentsChange) {
+        onSelectedDocumentsChange(newSelected);
+      } else {
+        setInternalSelectedDocuments(newSelected);
+      }
+      
+      // Update internal state
+      setInternalDocuments(prev => 
+        prev.map(doc => 
+          doc.id === documentId ? { ...doc, isSelected: selected } : doc
+        )
+      );
+    } else {
+      if (onSelectedDocumentsChange) {
+        onSelectedDocumentsChange(selected ? [documentId] : []);
+      } else {
+        setInternalSelectedDocuments(selected ? [documentId] : []);
+      }
+      
+      // Update internal state
+      setInternalDocuments(prev => 
+        prev.map(doc => ({
+          ...doc, 
+          isSelected: doc.id === documentId ? selected : false
+        }))
+      );
+    }
+  }, [selectable, multiSelect, externalSelectedDocuments, onSelectedDocumentsChange]);
+  
+  // Handle select all
+  const handleSelectAll = useCallback((selected: boolean) => {
+    if (!selectable || !multiSelect) return;
+    
+    const allIds = documents.map(doc => doc.id);
+    
+    if (onSelectedDocumentsChange) {
+      onSelectedDocumentsChange(selected ? allIds : []);
+    } else {
+      setInternalSelectedDocuments(selected ? allIds : []);
+    }
+    
+    // Update internal state
+    setInternalDocuments(prev => 
+      prev.map(doc => ({ ...doc, isSelected: selected }))
+    );
+  }, [selectable, multiSelect, documents, onSelectedDocumentsChange]);
+  
+  // Handle document actions
+  const handleDocumentAction = useCallback((action: string, document: EnhancedDocument) => {
+    if (!document) return;
+    
+    switch (action) {
+      case 'view':
+        onDocumentSelect?.(document);
+        break;
+      case 'edit':
+        onDocumentEdit?.(document);
+        break;
+      case 'delete':
+        onDocumentDelete?.(document);
+        break;
+      case 'download':
+        onDocumentDownload?.(document);
+        break;
+      case 'share':
+        onDocumentShare?.(document);
+        break;
+      case 'star':
+        onDocumentStar?.(document, !document.isStarred);
+        break;
+      default:
+        console.warn(`Unknown action: ${action}`);
+    }
+  }, [onDocumentSelect, onDocumentEdit, onDocumentDelete, onDocumentDownload, onDocumentShare, onDocumentStar]);
+  
+  // Handle document deletion
+  const handleDeleteDocument = useCallback(async (document: EnhancedDocument) => {
+    try {
+      setIsLoading(true);
+      await contextDeleteDocument(document.id);
+      
+      // Update local state
+      setInternalDocuments(prev => prev.filter(doc => doc.id !== document.id));
+      
+      // Remove from selected
+      if (onSelectedDocumentsChange) {
+        onSelectedDocumentsChange(
+          externalSelectedDocuments.filter(id => id !== document.id)
+        );
+      } else {
+        setInternalSelectedDocuments(prev => prev.filter(id => id !== document.id));
+      }
+      
+      // Show success message or handle as needed
+    } catch (err) {
+      console.error('Failed to delete document:', err);
+      setError(err instanceof Error ? err : new Error('Failed to delete document'));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [contextDeleteDocument, externalSelectedDocuments, onSelectedDocumentsChange]);
+  
+  // Handle search
+  const handleSearch = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+    
+    // Update filters
+    const newFilters = { ...appliedFilters, search: query };
+    setAppliedFilters(newFilters);
+    if (onFiltersChange) onFiltersChange(newFilters);
+    
+    // Reset to first page when searching
+    if (externalOnPageChange) {
+      externalOnPageChange(1);
+    } else {
+      setInternalPage(1);
+    }
+  }, [appliedFilters, onFiltersChange, externalOnPageChange]);
+  
+  // Handle sort
+  const handleSort = useCallback((field: string) => {
+    const direction = 
+      sortBy === field && sortOrder === 'asc' 
+        ? 'desc' 
+        : 'asc';
+    
+    const newSort = { field, direction } as const;
+    
+    setSortBy(field);
+    setSortOrder(direction);
+    if (onSortChange) onSortChange(newSort);
+  }, [sortBy, sortOrder, onSortChange]);
+  
+  // Handle page change
+  const handlePageChange = useCallback((event: unknown, newPage: number) => {
+    if (externalOnPageChange) {
+      externalOnPageChange(newPage + 1);
+    } else {
+      setInternalPage(newPage + 1);
+    }
+  }, [externalOnPageChange]);
+  
+  // Handle rows per page change
+  const handleRowsPerPageChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const newPageSize = parseInt(event.target.value, 10);
+    
+    if (externalOnPageSizeChange) {
+      externalOnPageSizeChange(newPageSize);
+    } else {
+      setInternalPageSize(newPageSize);
+    }
+    
+    // Reset to first page when changing page size
+    if (externalOnPageChange) {
+      externalOnPageChange(1);
+    } else {
+      setInternalPage(1);
+    }
+  }, [externalOnPageSizeChange, externalOnPageChange]);
+
+  // Fetch documents when component mounts or filters change
+  useEffect(() => {
+    const fetchDocuments = async () => {
+      try {
+        await fetchDocuments(
+          pagination.page, 
+          pagination.pageSize, 
+          { 
+            search: searchQuery,
+            sort_by: sortBy,
+            sort_order: sortOrder,
+            ...appliedFilters
+          }
+        );
+      } catch (err) {
+        console.error('Failed to fetch documents:', err);
+      }
+    };
+
+    fetchDocuments();
+  }, [pagination.page, pagination.pageSize, searchQuery, sortBy, sortOrder, appliedFilters]);
+
+  // Get the current pagination values
+  const currentPage = externalPage !== undefined ? externalPage : internalPage;
+  const currentPageSize = externalPageSize !== undefined ? externalPageSize : internalPageSize;
+  const currentTotalCount = externalTotalCount !== undefined ? externalTotalCount : contextPagination.total;
+  const currentTotalPages = externalTotalCount !== undefined 
+    ? Math.ceil(externalTotalCount / currentPageSize)
+    : contextPagination.totalPages;
+
+  // Handle menu actions
+  const handleMenuClick = (event: React.MouseEvent<HTMLElement>, document: EnhancedDocument) => {
+    setSelectedDocument(document);
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleMenuClose = () => {
+    setAnchorEl(null);
+    setSelectedDocument(null);
+  };
+
+  // Handle filter menu
+  const handleFilterClick = (event: React.MouseEvent<HTMLElement>) => {
+    setFilterAnchorEl(event.currentTarget);
+  };
+
+  const handleFilterClose = () => {
+    setFilterAnchorEl(null);
+  };
+
+  const handleFilterChange = (filter: string, value: any) => {
+    const newFilters = { ...appliedFilters, [filter]: value };
+    setAppliedFilters(newFilters);
+    if (onFiltersChange) onFiltersChange(newFilters);
+    
+    // Reset to first page when filters change
+    if (externalOnPageChange) {
+      externalOnPageChange(1);
+    } else {
+      setInternalPage(1);
+    }
+  };
+
+  // Handle refresh
+  const handleRefresh = useCallback(() => {
+    const fetchData = async () => {
+      try {
+        setIsLoading(true);
+        await fetchDocuments(
+          currentPage,
+          currentPageSize,
+          {
+            ...appliedFilters,
+            sort_by: sortBy,
+            sort_order: sortOrder,
+            search: searchQuery
+          }
+        );
+        setError(null);
+      } catch (err) {
+        console.error('Failed to refresh documents:', err);
+        setError('Failed to refresh documents. Please try again.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [currentPage, currentPageSize, appliedFilters, sortBy, sortOrder, searchQuery, fetchDocuments]);
+
+  // Format file size
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  // Get file icon based on mime type
+  const getFileIcon = (mimeType: string) => {
+    if (!mimeType) return <FileIcon />;
+    
+    const type = mimeType.split('/')[0];
+    
+    switch (type) {
+      case 'image':
+        return <ImageIcon />;
+      case 'audio':
+        return <AudioIcon />;
+      case 'video':
+        return <VideoIcon />;
+      case 'application':
+        if (mimeType.includes('pdf')) return <PdfIcon />;
+        if (mimeType.includes('word') || mimeType.includes('document')) return <DocIcon />;
+        if (mimeType.includes('zip') || mimeType.includes('compressed')) return <ArchiveIcon />;
+        return <FileIcon />;
+      case 'text':
+        if (mimeType.includes('markdown') || mimeType.includes('md')) return <TextSnippetIcon />;
+        if (mimeType.includes('html') || mimeType.includes('javascript') || mimeType.includes('css')) 
+          return <CodeIcon />;
+        return <TextSnippetIcon />;
+      default:
+        return <UnknownFileIcon />;
+    }
+  };
+
+  // Render loading state
+  const renderLoading = () => (
+    <Box sx={{ p: 3, textAlign: 'center' }}>
+      <CircularProgress />
+      <Typography variant="body2" sx={{ mt: 2 }}>
+        {i18n.loadingDocuments}
+      </Typography>
+    </Box>
+  );
+
+  // Render error state
+  const renderError = () => (
+    <Alert severity="error" sx={{ m: 2 }}>
+      <AlertTitle>{i18n.errorLoadingDocuments}</AlertTitle>
+      {typeof errorState === 'string' ? errorState : errorState?.message}
+    </Alert>
+  );
+
+  // Render empty state
+  const renderEmptyState = () => (
+    <Box sx={{ p: 4, textAlign: 'center' }}>
+      <DescriptionOutlinedIcon sx={{ fontSize: 60, color: 'text.disabled', mb: 2 }} />
+      <Typography variant="h6" color="textSecondary">
+        {searchQuery ? i18n.noSearchResults : i18n.noDocuments}
+      </Typography>
+      {searchQuery ? (
+        <Button 
+          onClick={() => setSearchQuery('')} 
+          color="primary" 
+          sx={{ mt: 2 }}
+        >
+          Clear search
+        </Button>
+      ) : (
+        <Button 
+          onClick={() => setUploadDialogOpen(true)} 
+          color="primary" 
+          variant="contained" 
+          sx={{ mt: 2 }}
+          startIcon={<CloudUploadIcon />}
+        >
+          {i18n.upload}
+        </Button>
+      )}
+    </Box>
+  );
+
+  // Render document row
+  const renderDocumentRow = (document: EnhancedDocument) => {
+    const isSelected = externalSelectedDocuments.includes(document.id);
+    const modifiedDate = document.updatedAt ? new Date(document.updatedAt) : new Date();
+    
+    return (
+      <TableRow
+        hover
+        role="checkbox"
+        aria-checked={isSelected}
+        tabIndex={-1}
+        key={document.id}
+        selected={isSelected}
+        onClick={(e) => {
+          if (onDocumentClick) onDocumentClick(document, e);
+          if (selectable) handleSelectDocument(document.id, !isSelected);
+        }}
+        onDoubleClick={(e) => onDocumentDoubleClick && onDocumentDoubleClick(document, e)}
+        sx={{
+          cursor: 'pointer',
+          '&:hover': {
+            backgroundColor: theme.palette.action.hover,
+          },
+          ...(isSelected && {
+            backgroundColor: alpha(theme.palette.primary.main, 0.08),
+            '&:hover': {
+              backgroundColor: alpha(theme.palette.primary.main, 0.12),
+            },
+          }),
+        }}
+      >
+        {showSelectionCheckbox && (
+          <TableCell padding="checkbox">
+            <Checkbox
+              color="primary"
+              indeterminate={
+                externalSelectedDocuments.length > 0 && 
+                externalSelectedDocuments.length < documents.length
+              }
+              checked={
+                documents.length > 0 && 
+                externalSelectedDocuments.length === documents.length
+              }
+              onChange={(e) => handleSelectAll(e.target.checked)}
+            />
+          </TableCell>
+        )}
+        
+        <TableCell>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            {showFileIcons && (
+              <Box sx={{ mr: 2, display: 'flex' }}>
+                {document.isStarred ? (
+                  <StarIcon color="warning" />
+                ) : (
+                  getFileIcon(document.mimeType || '')
+                )}
+              </Box>
+            )}
+            <Box>
+              <Typography variant="body2" noWrap>
+                {document.name}
+              </Typography>
+              {showFileSizes && document.size && (
+                <Typography variant="caption" color="textSecondary">
+                  {formatFileSize(document.size)}
+                </Typography>
+              )}
+            </Box>
+          </Box>
+        </TableCell>
+        
+        {showLastModified && (
+          <TableCell>
+            <Tooltip title={format(modifiedDate, 'PPpp')}>
+              <Typography variant="body2">
+                {formatDistanceToNow(modifiedDate, { addSuffix: true })}
+              </Typography>
+            </Tooltip>
+          </TableCell>
+        )}
+        
+        {showOwners && document.owner && (
+          <TableCell>
+            <Chip 
+              label={document.owner.name || 'Unknown'} 
+              size="small" 
+              avatar={<Avatar src={document.owner.avatar} />}
+            />
+          </TableCell>
+        )}
+        
+        {showSharingStatus && (
+          <TableCell>
+            {document.isShared ? (
+              <Chip 
+                label="Shared" 
+                size="small" 
+                color="primary" 
+                variant="outlined"
+                icon={<PublicIcon fontSize="small" />}
+              />
+            ) : (
+              <Chip 
+                label="Private" 
+                size="small" 
+                variant="outlined"
+                icon={<LockIcon fontSize="small" />}
+              />
+            )}
+          </TableCell>
+        )}
+        
+        <TableCell align="right">
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleMenuClick(e, document);
+            }}
+          >
+            <MoreVertIcon />
+          </IconButton>
+        </TableCell>
+      </TableRow>
+    );
+  };
+
+  const handleUploadSuccess = (document: EnhancedDocument, file: File) => {
+    setUploadDialogOpen(false);
+    
+    // Call the upload complete handler if provided
+    if (onDocumentUploadComplete) {
+      if (onDocumentUploadComplete) {
+        if (onDocumentUploadComplete) if (onDocumentUploadComplete) if (onDocumentUploadComplete) {
+        onDocumentUploadComplete(document, file);
+      }
+      }
+    }
+    
+    // Refresh the document list
+    handleRefresh();
+  };
+
+  // Render the main component
+  return (
+    <Box sx={{ width: '100%' }} className={props.className} style={props.style}>
+      {/* Toolbar */}
+      {showToolbar && (
+        <Paper sx={{ mb: 2, p: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap' }}>
+            {/* Search */}
+            {showSearch && (
+              <TextField
+                variant="outlined"
+                size="small"
+                placeholder={i18n.searchPlaceholder}
+                value={searchQuery}
+                onChange={handleSearch}
+                sx={{ flex: 1, minWidth: 200, m: 1 }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            )}
+            
+            <Box sx={{ flexGrow: 1 }} />
+            
+            {/* View Toggle */}
+            {showViewToggle && (
+              <ToggleButtonGroup
+                value={viewMode}
+                exclusive
+                onChange={(e, newViewMode) => {
+                  if (newViewMode !== null) {
+                    // Handle view mode change
+                  }
+                }}
+                size="small"
+                sx={{ m: 1 }}
+                aria-label="view mode"
+              >
+                <ToggleButton value="grid" aria-label="grid view">
+                  <GridViewIcon />
+                </ToggleButton>
+                <ToggleButton value="list" aria-label="list view">
+                  <ViewListIcon />
+                </ToggleButton>
+                <ToggleButton value="table" aria-label="table view">
+                  <TableChartIcon />
+                </ToggleButton>
+              </ToggleButtonGroup>
+            )}
+            
+            {/* Filter Button */}
+            {showFilters && (
+              <Tooltip title={i18n.filter}>
+                <IconButton onClick={handleFilterClick}>
+                  <FilterListIcon />
+                </IconButton>
+              </Tooltip>
+            )}
+            
+            {/* Sort Button */}
+            {showSort && (
+              <Tooltip title={i18n.sort}>
+                <IconButton>
+                  <SortIcon />
+                </IconButton>
+              </Tooltip>
+            )}
+            
+            {/* Upload Button */}
+            {showUploadButton && (
+              <Tooltip title={i18n.upload}>
+                <IconButton 
+                  onClick={() => setUploadDialogOpen(true)}
+                  color="primary"
+                >
+                  <CloudUploadIcon />
+                </IconButton>
+              </Tooltip>
+            )}
+            
+            {/* New Folder Button */}
+            {showNewFolderButton && (
+              <Tooltip title={i18n.newFolder}>
+                <IconButton>
+                  <CreateNewFolderIcon />
+                </IconButton>
+              </Tooltip>
+            )}
+            
+            {/* Refresh Button */}
+            {showRefreshButton && (
+              <Tooltip title={i18n.refresh}>
+                <IconButton onClick={handleRefresh}>
+                  <RefreshIcon />
+                </IconButton>
+              </Tooltip>
+            )}
+            
+            {/* More Actions */}
+            {showMoreActionsButton && (
+              <Tooltip title={i18n.moreActions}>
+                <IconButton>
+                  <MoreHorizIcon />
+                </IconButton>
+              </Tooltip>
+            )}
+          </Box>
+        </Paper>
+      )}
+      
+      {/* Document List */}
+      <Paper sx={{ width: '100%', mb: 2, overflow: 'hidden' }}>
+        {/* Loading State */}
+        {loading && showLoadingState && renderLoading()}
+        
+        {/* Error State */}
+        {!loading && errorState && showErrorState && renderError()}
+        
+        {/* Empty State */}
+        {!loading && !errorState && documents.length === 0 && showEmptyState && renderEmptyState()}
+        
+        {/* Document Table */}
+        {!loading && !errorState && documents.length > 0 && (
+          <TableContainer>
+            <Table sx={{ minWidth: 650 }} size="small">
+              <TableHead>
+                <TableRow>
+                  {showSelectionCheckbox && (
+                    <TableCell padding="checkbox">
+                      <Checkbox
+                        color="primary"
+                        indeterminate={
+                          externalSelectedDocuments.length > 0 && 
+                          externalSelectedDocuments.length < documents.length
+                        }
+                        checked={
+                          documents.length > 0 && 
+                          externalSelectedDocuments.length === documents.length
+                        }
+                        onChange={(e) => handleSelectAll(e.target.checked)}
+                      />
+                    </TableCell>
+                  )}
+                  
+                  <TableCell>
+                    <TableSortLabel
+                      active={internalSort.field === 'name'}
+                      direction={internalSort.field === 'name' ? internalSort.direction : 'asc'}
+                      onClick={() => handleSort('name')}
+                    >
+                      {i18n.name}
+                    </TableSortLabel>
+                  </TableCell>
+                  
+                  {showLastModified && (
+                    <TableCell>
+                      <TableSortLabel
+                        active={internalSort.field === 'updatedAt'}
+                        direction={internalSort.field === 'updatedAt' ? internalSort.direction : 'desc'}
+                        onClick={() => handleSort('updatedAt')}
+                      >
+                        {i18n.modified}
+                      </TableSortLabel>
+                    </TableCell>
+                  )}
+                  
+                  {showOwners && (
+                    <TableCell>{i18n.owner}</TableCell>
+                  )}
+                  
+                  {showSharingStatus && (
+                    <TableCell>{i18n.status}</TableCell>
+                  )}
+                  
+                  <TableCell align="right">{i18n.actions}</TableCell>
+                </TableRow>
+              </TableHead>
+              
+              <TableBody>
+                {documents.map((document) => renderDocumentRow(document))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+        
+        {/* Pagination */}
+        {showPagination && documents.length > 0 && (
+          <TablePagination
+            rowsPerPageOptions={[5, 10, 25, 50, 100]}
+            component="div"
+            count={currentTotalCount}
+            rowsPerPage={currentPageSize}
+            page={currentPage - 1}
+            onPageChange={handlePageChange}
+            onRowsPerPageChange={handleRowsPerPageChange}
+            labelRowsPerPage={i18n.rowsPerPage}
+            labelDisplayedRows={({ from, to, count }) => 
+              `${from}-${to} ${i18n.of} ${count !== -1 ? count : `more than ${to}`}`
+            }
+            nextIconButtonProps={{
+              title: i18n.nextPage,
+              'aria-label': i18n.nextPage,
+            }}
+            backIconButtonProps={{
+              title: i18n.previousPage,
+              'aria-label': i18n.previousPage,
+            }}
+            SelectProps={{
+              inputProps: { 'aria-label': i18n.rowsPerPage },
+              native: true,
+            }}
+          />
+        )}
+      </Paper>
+      
+      {/* Document Actions Menu */}
+      <Menu
+        anchorEl={anchorEl}
+        open={Boolean(anchorEl)}
+        onClose={handleMenuClose}
+        onClick={handleMenuClose}
+        anchorOrigin={{
+          vertical: 'top',
+          horizontal: 'right',
+        }}
+        transformOrigin={{
+          vertical: 'top',
+          horizontal: 'right',
+        }}
+      >
+        <MenuItem onClick={() => handleDocumentAction('view', selectedDocument!)}>
+          <ListItemIcon>
+            <VisibilityIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>View</ListItemText>
+        </MenuItem>
+        
+        <MenuItem onClick={() => handleDocumentAction('edit', selectedDocument!)}>
+          <ListItemIcon>
+            <EditIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Edit</ListItemText>
+        </MenuItem>
+        
+        <MenuItem onClick={() => handleDocumentAction('download', selectedDocument!)}>
+          <ListItemIcon>
+            <DownloadIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Download</ListItemText>
+        </MenuItem>
+        
+        <MenuItem onClick={() => handleDocumentAction('share', selectedDocument!)}>
+          <ListItemIcon>
+            <ShareIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Share</ListItemText>
+        </MenuItem>
+        
+        {showStarToggle && (
+          <MenuItem 
+            onClick={() => handleDocumentAction('star', selectedDocument!)}
+            disabled={!selectedDocument}
+          >
+            <ListItemIcon>
+              {selectedDocument?.isStarred ? (
+                <StarIcon fontSize="small" color="warning" />
+              ) : (
+                <StarBorderIcon fontSize="small" />
+              )}
+            </ListItemIcon>
+            <ListItemText>
+              {selectedDocument?.isStarred ? 'Remove star' : 'Add star'}
+            </ListItemText>
+          </MenuItem>
+        )}
+        
+        <Divider />
+        
+        <MenuItem 
+          onClick={() => handleDocumentAction('delete', selectedDocument!)}
+          sx={{ color: 'error.main' }}
+        >
+          <ListItemIcon sx={{ color: 'error.main' }}>
+            <DeleteIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Delete</ListItemText>
+        </MenuItem>
+      </Menu>
+      
+      {/* Filter Menu */}
+      <Menu
+        anchorEl={filterAnchorEl}
+        open={Boolean(filterAnchorEl)}
+        onClose={handleFilterClose}
+      >
+        <MenuItem dense>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={!!internalFilters.starred}
+                onChange={(e) => handleFilterChange('starred', e.target.checked)}
+              />
+            }
+            label="Starred"
+            sx={{ ml: 0 }}
+          />
+        </MenuItem>
+        
+        <MenuItem dense>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={!!internalFilters.sharedWithMe}
+                onChange={(e) => handleFilterChange('sharedWithMe', e.target.checked)}
+              />
+            }
+            label="Shared with me"
+            sx={{ ml: 0 }}
+          />
+        </MenuItem>
+        
+        <MenuItem dense>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={!!internalFilters.trashed}
+                onChange={(e) => handleFilterChange('trashed', e.target.checked)}
+              />
+            }
+            label="Trash"
+            sx={{ ml: 0 }}
+          />
+        </MenuItem>
+
+        <Box mt={2}>
+          <Typography variant="subtitle2" gutterBottom>
+            Date Range
+          </Typography>
+          <FormControl fullWidth size="small" margin="dense">
+            <InputLabel>Last Modified</InputLabel>
+            <Select
+              value={appliedFilters.date_range || ''}
+              onChange={(e: SelectChangeEvent) => 
+                handleFilterChange('date_range', e.target.value || undefined)
+              }
+              label="Last Modified"
+            >
+              <MenuItem value="">Anytime</MenuItem>
+              <MenuItem value="today">Today</MenuItem>
+              <MenuItem value="week">This Week</MenuItem>
+              <MenuItem value="month">This Month</MenuItem>
+              <MenuItem value="year">This Year</MenuItem>
+            </Select>
+          </FormControl>
+        </Box>
+
+        <Box mt={2} display="flex" justifyContent="space-between">
+          <Button 
+            size="small" 
+            onClick={() => setAppliedFilters({})}
+            disabled={Object.keys(appliedFilters).length === 0}
+          >
+            Reset
+          </Button>
+          <Button 
+            variant="contained" 
+            color="primary" 
+            size="small"
+            onClick={handleFilterClose}
+          >
+            Apply
+          </Button>
+        </Box>
+      </Menu>
+
+      {/* Document Upload Dialog */}
+      <DocumentUploader 
+        open={uploadDialogOpen} 
+        onClose={() => setUploadDialogOpen(false)}
+        onUploadSuccess={handleUploadSuccess}
+      />
+    </Box>
+  );
+};
+
+export default DocumentList;

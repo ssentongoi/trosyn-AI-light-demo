@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useCallback, useMemo, ReactNode } from 'react';
-import { useWebSocket } from '../hooks/useWebSocket';
+import { useWebSocket as useWebSocketHook } from '../hooks/useWebSocket';
 import { useAuth } from './AuthContext';
 import { AnyWebSocketMessage, WebSocketMessage } from '../types/websocket';
 
@@ -150,5 +150,8 @@ export const useWebSocketContext = (): WebSocketContextType => {
   }
   return context;
 };
+
+// Export the context and hook
+export { WebSocketContext, useWebSocketContext as useWebSocket };
 
 export default WebSocketContext;

@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import DepartmentRequestForm from '../DepartmentRequestForm';
+import { vi } from 'vitest';
 
 // Create a theme for testing
 const theme = createTheme();

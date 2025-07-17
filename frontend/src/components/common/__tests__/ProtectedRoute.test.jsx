@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import ProtectedRoute from '../ProtectedRoute';
 import AppContext from '../../../contexts/AppContext';
+import { vi } from 'vitest';
 
 // Mock the Navigate component to spy on its props
 const mockNavigate = vi.fn();

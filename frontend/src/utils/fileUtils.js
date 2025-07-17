@@ -1,3 +1,5 @@
+import { DocIcon as FileIcon } from './icons';
+
 /**
  * Format bytes to human-readable string
  * @param {number} bytes - File size in bytes

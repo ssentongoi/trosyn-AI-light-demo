@@ -43,7 +43,6 @@ This file provides detailed instructions for running and debugging the test suit
 # 4. Update your test fixtures to use the new test_data fixture
 # 5. Run the complete test suite to verify everything works
 
-"""
 import sys
 import os
 

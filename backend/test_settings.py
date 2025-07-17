@@ -1,5 +1,5 @@
-import sys
 import os
+import sys
 from pathlib import Path
 
 # Add the parent directory to Python path
@@ -7,6 +7,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 # Now import the settings
 from app.core.config import settings
+
 
 def print_settings():
     print("\n=== Current Settings ===")
@@ -19,18 +20,20 @@ def print_settings():
     print(f"BACKEND_CORS_ORIGINS: {settings.BACKEND_CORS_ORIGINS}")
     print("======================\n")
 
+
 if __name__ == "__main__":
     # Print environment variables for debugging
     print("Environment variables:")
     for key in ["SECRET_KEY", "REFRESH_SECRET_KEY", "DATABASE_URL"]:
         print(f"{key}: {os.environ.get(key, 'Not set')}")
-    
+
     # Print settings
     print_settings()
-    
+
     # Try to access the settings through the security module
     try:
         from app.core import security
+
         print("Successfully imported security module")
     except Exception as e:
         print(f"Error importing security module: {e}")

@@ -19,30 +19,40 @@ for key in ["PYTHONPATH", "SECRET_KEY", "REFRESH_SECRET_KEY", "DATABASE_URL"]:
 try:
     print("\nAttempting to import settings...")
     from app.core.config import settings
+
     print("Successfully imported settings!")
-    
+
     # Print settings
     print("\nSettings values:")
-    for attr in ["SECRET_KEY", "REFRESH_SECRET_KEY", "ALGORITHM", 
-                 "ACCESS_TOKEN_EXPIRE_MINUTES", "REFRESH_TOKEN_EXPIRE_DAYS",
-                 "DATABASE_URL", "BACKEND_CORS_ORIGINS"]:
+    for attr in [
+        "SECRET_KEY",
+        "REFRESH_SECRET_KEY",
+        "ALGORITHM",
+        "ACCESS_TOKEN_EXPIRE_MINUTES",
+        "REFRESH_TOKEN_EXPIRE_DAYS",
+        "DATABASE_URL",
+        "BACKEND_CORS_ORIGINS",
+    ]:
         try:
-            value = getattr(settings, attr, 'Not found')
+            value = getattr(settings, attr, "Not found")
             print(f"{attr}: {value}")
         except Exception as e:
             print(f"Error accessing {attr}: {e}")
-    
+
 except Exception as e:
     print(f"Error importing settings: {e}")
     import traceback
+
     traceback.print_exc()
 
 # Try to import security module
 try:
     print("\nAttempting to import security module...")
     from app.core import security
+
     print("Successfully imported security module!")
 except Exception as e:
     print(f"Error importing security module: {e}")
     import traceback
+
     traceback.print_exc()

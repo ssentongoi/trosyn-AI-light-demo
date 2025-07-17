@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Box,
   Button,
@@ -27,6 +27,7 @@ import {
   PersonOff as PersonOffIcon,
   HourglassEmpty as HourglassEmptyIcon,
 } from '@mui/icons-material';
+import { format } from 'date-fns';
 
 const statusOptions = [
   { value: 'all', label: 'All Statuses' },
@@ -53,6 +54,10 @@ const UserFilters = ({
   showAdvanced = false,
   onToggleAdvanced,
 }) => {
+  // State for date range picker
+  const [dateRangeAnchorEl, setDateRangeAnchorEl] = useState(null);
+  const [activeDateRange, setActiveDateRange] = useState(null);
+  const [tempDateRange, setTempDateRange] = useState({});
   const handleStatusChange = (event) => {
     onFilterChange('status', event.target.value);
   };

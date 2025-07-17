@@ -1,16 +1,17 @@
 from datetime import datetime, timedelta
-from typing import Optional, Tuple, Dict, Any
-from jose import JWTError, jwt
-from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status, Response, Request
+from typing import Any, Dict, Optional, Tuple
+
+from fastapi import Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.security.utils import get_authorization_scheme_param
+from jose import JWTError, jwt
+from jose.exceptions import ExpiredSignatureError
+from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from jose.exceptions import ExpiredSignatureError
 
-from app.database import get_db
 from app.core.config import settings
+from app.database import get_db
 from app.models.user import User
 
 # Configuration
@@ -26,8 +27,10 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/token")
 
+
 class OAuth2PasswordBearerWithCookie(OAuth2PasswordBearer):
     """OAuth2 password flow with token in a httpOnly cookie."""
+
     async def __call__(self, request: Request) -> Optional[str]:
         # Check for token in Authorization header first
         authorization: str = request.headers.get("Authorization")
@@ -35,29 +38,35 @@ class OAuth2PasswordBearerWithCookie(OAuth2PasswordBearer):
             scheme, param = get_authorization_scheme_param(authorization)
             if scheme.lower() == "bearer":
                 return param
-        
+
         # Fall back to cookie
         token = request.cookies.get(COOKIE_NAME)
         if token:
             return token
         return None
 
+
 # Use the custom OAuth2 scheme
-oauth2_scheme = OAuth2PasswordBearerWithCookie(tokenUrl=f"{settings.API_V1_STR}/auth/token")
+oauth2_scheme = OAuth2PasswordBearerWithCookie(
+    tokenUrl=f"{settings.API_V1_STR}/auth/token"
+)
+
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against a hash."""
     return pwd_context.verify(plain_password, hashed_password)
 
+
 def get_password_hash(password: str) -> str:
     """Generate a password hash."""
     return pwd_context.hash(password)
 
+
 def create_token(
-    data: dict, 
+    data: dict,
     expires_delta: Optional[timedelta] = None,
     secret_key: str = SECRET_KEY,
-    token_type: str = "access"
+    token_type: str = "access",
 ) -> str:
     """Create a JWT token (access or refresh)."""
     to_encode = data.copy()
@@ -65,15 +74,18 @@ def create_token(
         expire = datetime.utcnow() + expires_delta
     else:
         expire = datetime.utcnow() + timedelta(minutes=15)
-    
-    to_encode.update({
-        "exp": expire,
-        "type": token_type,
-        "iat": datetime.utcnow(),
-    })
-    
+
+    to_encode.update(
+        {
+            "exp": expire,
+            "type": token_type,
+            "iat": datetime.utcnow(),
+        }
+    )
+
     encoded_jwt = jwt.encode(to_encode, secret_key, algorithm=ALGORITHM)
     return encoded_jwt
+
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """Create an access token."""
@@ -81,11 +93,13 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
         expires_delta = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     return create_token(data, expires_delta, SECRET_KEY, "access")
 
+
 def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """Create a refresh token."""
     if expires_delta is None:
         expires_delta = timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     return create_token(data, expires_delta, REFRESH_SECRET_KEY, "refresh")
+
 
 def decode_token(token: str, is_refresh: bool = False):
     """Decode a JWT token."""
@@ -106,6 +120,7 @@ def decode_token(token: str, is_refresh: bool = False):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+
 def set_refresh_token_cookie(response: Response, token: str) -> None:
     """Set the refresh token as an HTTP-only cookie."""
     response.set_cookie(
@@ -118,6 +133,7 @@ def set_refresh_token_cookie(response: Response, token: str) -> None:
         samesite="lax",
     )
 
+
 def remove_refresh_token_cookie(response: Response) -> None:
     """Remove the refresh token cookie."""
     response.delete_cookie(
@@ -127,9 +143,9 @@ def remove_refresh_token_cookie(response: Response) -> None:
         samesite="lax",
     )
 
+
 async def get_current_user(
-    token: str = Depends(oauth2_scheme), 
-    db: AsyncSession = Depends(get_db)
+    token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)
 ):
     """Get the current user from the access token."""
     credentials_exception = HTTPException(
@@ -137,39 +153,37 @@ async def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    
+
     try:
         payload = decode_token(token)
         username: str = payload.get("sub")
         if username is None:
             raise credentials_exception
-            
+
     except JWTError:
         raise credentials_exception
-    
+
     user = await get_user(db, username)
     if user is None:
         raise credentials_exception
-        
+
     return user
 
-def get_current_active_user(
-    current_user: User = Depends(get_current_user)
-) -> User:
+
+def get_current_active_user(current_user: User = Depends(get_current_user)) -> User:
     """
     Dependency to get the current active user.
     Raises HTTPException if the user is not active.
     """
     if not current_user.is_active:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Inactive user"
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user"
         )
     return current_user
 
+
 async def get_current_user_from_refresh_token(
-    refresh_token: str = Depends(oauth2_scheme), 
-    db: AsyncSession = Depends(get_db)
+    refresh_token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)
 ):
     """Get the current user from the refresh token."""
     credentials_exception = HTTPException(
@@ -177,24 +191,25 @@ async def get_current_user_from_refresh_token(
         detail="Could not validate refresh token",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    
+
     try:
         payload = decode_token(refresh_token, is_refresh=True)
         if payload is None or payload.get("type") != "refresh":
             raise credentials_exception
-            
+
         username: str = payload.get("sub")
         if username is None:
             raise credentials_exception
-            
+
     except JWTError:
         raise credentials_exception
-    
+
     user = await get_user(db, username)
     if user is None:
         raise credentials_exception
-        
+
     return user
+
 
 # Helper function to get user from database
 async def get_user(db: AsyncSession, username: str) -> Optional[User]:

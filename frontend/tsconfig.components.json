@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "@emotion/react",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": [
+    "src/components/DocumentList/components/DocumentListTable.tsx",
+    "src/components/DocumentList/components/__test__/DocumentListTable.test.tsx"
+  ]
+}

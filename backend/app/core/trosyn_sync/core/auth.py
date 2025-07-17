@@ -3,15 +3,16 @@ Authentication and Authorization Service for Trosyn Sync.
 
 This module handles JWT token generation/validation and API key management.
 """
+
 import logging
 import os
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import jwt, JWTError
+from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, ConfigDict
 from pydantic_settings import BaseSettings
@@ -28,6 +29,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
 
 class Token(BaseModel):
     """JWT token model with refresh token support."""
+
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
@@ -38,6 +40,7 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     """Token payload data."""
+
     node_id: str
     node_type: str
     scopes: list[str] = []
@@ -47,18 +50,17 @@ class TokenData(BaseModel):
 
 class AuthSettings(BaseSettings):
     """Authentication settings with token rotation support."""
+
     secret_key: str = "your-secret-key-here"  # Change in production
     algorithm: str = JWT_ALGORITHM
     access_token_expire_minutes: int = 15  # Short-lived access token (15 minutes)
-    refresh_token_expire_days: int = 7     # Long-lived refresh token (7 days)
-    refresh_token_rotation_days: int = 1   # Rotate refresh tokens every 24 hours
+    refresh_token_expire_days: int = 7  # Long-lived refresh token (7 days)
+    refresh_token_rotation_days: int = 1  # Rotate refresh tokens every 24 hours
     token_issuer: str = "trosyn-sync"
     token_audience: str = "trosyn-client"
 
     model_config = ConfigDict(
-        env_file=".env",
-        env_prefix="TROSYN_AUTH_",
-        extra="ignore"
+        env_file=".env", env_prefix="TROSYN_AUTH_", extra="ignore"
     )
 
 
@@ -83,10 +85,10 @@ class AuthService:
         expires_delta: timedelta,
         token_type: str = "access",
         scopes: Optional[list[str]] = None,
-        jti: Optional[str] = None
+        jti: Optional[str] = None,
     ) -> str:
         """Create a JWT token with the given parameters.
-        
+
         Args:
             node_id: Unique node identifier
             node_type: Type of node
@@ -94,13 +96,13 @@ class AuthService:
             token_type: Type of token ('access' or 'refresh')
             scopes: List of permission scopes
             jti: Optional JWT ID for refresh token tracking
-            
+
         Returns:
             Encoded JWT token
         """
         now = datetime.utcnow()
         expire = now + expires_delta
-        
+
         to_encode = {
             "sub": node_id,
             "node_type": node_type,
@@ -109,33 +111,31 @@ class AuthService:
             "exp": expire,
             "iss": self.settings.token_issuer,
             "aud": self.settings.token_audience,
-            "type": token_type
+            "type": token_type,
         }
-        
+
         if jti:
             to_encode["jti"] = jti
-            
+
         return jwt.encode(
-            to_encode,
-            self.settings.secret_key,
-            algorithm=self.settings.algorithm
+            to_encode, self.settings.secret_key, algorithm=self.settings.algorithm
         )
-        
+
     def create_access_token(
         self,
         node_id: str,
         node_type: str,
         expires_delta: Optional[timedelta] = None,
-        scopes: Optional[list[str]] = None
+        scopes: Optional[list[str]] = None,
     ) -> str:
         """Create a new JWT access token.
-        
+
         Args:
             node_id: Unique node identifier
             node_type: Type of node ('TROSYSN_ADMIN_HUB' or 'TROSYSN_DEPT_NODE')
             expires_delta: Optional expiration time delta
             scopes: List of permission scopes
-            
+
         Returns:
             Encoded JWT access token
         """
@@ -147,26 +147,26 @@ class AuthService:
             node_type=node_type,
             expires_delta=expires_delta,
             token_type="access",
-            scopes=scopes
+            scopes=scopes,
         )
-        
+
     def create_refresh_token(
         self,
         node_id: str,
         node_type: str,
         expires_delta: Optional[timedelta] = None,
         scopes: Optional[list[str]] = None,
-        jti: Optional[str] = None
+        jti: Optional[str] = None,
     ) -> str:
         """Create a new JWT refresh token.
-        
+
         Args:
             node_id: Unique node identifier
             node_type: Type of node
             expires_delta: Optional expiration time delta
             scopes: List of permission scopes
             jti: Optional JWT ID for refresh token tracking
-            
+
         Returns:
             Encoded JWT refresh token
         """
@@ -179,9 +179,9 @@ class AuthService:
             expires_delta=expires_delta,
             token_type="refresh",
             scopes=scopes,
-            jti=jti
+            jti=jti,
         )
-        
+
     def create_token_pair(
         self,
         node_id: str,
@@ -189,10 +189,10 @@ class AuthService:
         access_token_expires: Optional[timedelta] = None,
         refresh_token_expires: Optional[timedelta] = None,
         scopes: Optional[list[str]] = None,
-        refresh_token_jti: Optional[str] = None
+        refresh_token_jti: Optional[str] = None,
     ) -> Token:
         """Create a new access/refresh token pair.
-        
+
         Args:
             node_id: Unique node identifier
             node_type: Type of node
@@ -200,7 +200,7 @@ class AuthService:
             refresh_token_expires: Optional expiration time delta for refresh token
             scopes: List of permission scopes
             refresh_token_jti: Optional JWT ID for refresh token tracking
-            
+
         Returns:
             Token object with access and refresh tokens
         """
@@ -208,40 +208,47 @@ class AuthService:
             node_id=node_id,
             node_type=node_type,
             expires_delta=access_token_expires,
-            scopes=scopes
+            scopes=scopes,
         )
-        
+
         refresh_token = self.create_refresh_token(
             node_id=node_id,
             node_type=node_type,
             expires_delta=refresh_token_expires,
             scopes=scopes,
-            jti=refresh_token_jti
+            jti=refresh_token_jti,
         )
-        
+
         return Token(
             access_token=access_token,
             refresh_token=refresh_token,
-            expires_in=int((datetime.utcnow() + (access_token_expires or 
-                timedelta(minutes=self.settings.access_token_expire_minutes)) - 
-                datetime.utcnow()).total_seconds())
+            expires_in=int(
+                (
+                    datetime.utcnow()
+                    + (
+                        access_token_expires
+                        or timedelta(minutes=self.settings.access_token_expire_minutes)
+                    )
+                    - datetime.utcnow()
+                ).total_seconds()
+            ),
         )
 
     def verify_token(
-        self, 
-        token: str, 
+        self,
+        token: str,
         token_type: Optional[str] = None,
         audience: Optional[str] = None,
-        issuer: Optional[str] = None
+        issuer: Optional[str] = None,
     ) -> Optional[TokenData]:
         """Verify and decode a JWT token.
-        
+
         Args:
             token: JWT token to verify
             token_type: Expected token type ('access' or 'refresh')
             audience: Expected audience
             issuer: Expected issuer
-            
+
         Returns:
             TokenData if valid, None otherwise
         """
@@ -252,46 +259,42 @@ class AuthService:
                 self.settings.secret_key,
                 algorithms=[self.settings.algorithm],
                 audience=audience or self.settings.token_audience,
-                issuer=issuer or self.settings.token_issuer
+                issuer=issuer or self.settings.token_issuer,
             )
-            
+
             # Validate required claims
             node_id = payload.get("sub")
             node_type = payload.get("node_type")
-            
+
             if not node_id or not node_type:
                 return None
-                
+
             # Validate token type if specified
             if token_type and payload.get("type") != token_type:
                 return None
-            
+
             # Check if token is expired
             exp = payload.get("exp")
             if exp and datetime.utcnow() > datetime.fromtimestamp(exp, tz=timezone.utc):
                 return None
-                
+
             return TokenData(
-                node_id=node_id,
-                node_type=node_type,
-                scopes=payload.get("scopes", [])
+                node_id=node_id, node_type=node_type, scopes=payload.get("scopes", [])
             )
-            
+
         except JWTError as e:
             logger.warning(f"Token verification failed: {e}")
             return None
-            
+
     def rotate_refresh_token(
-        self, 
-        refresh_token: str,
-        revoke_old: bool = True
+        self, refresh_token: str, revoke_old: bool = True
     ) -> Optional[Token]:
         """Rotate a refresh token, invalidating the old one.
-        
+
         Args:
             refresh_token: The refresh token to rotate
             revoke_old: Whether to revoke the old token
-            
+
         Returns:
             New Token object if rotation successful, None otherwise
         """
@@ -300,36 +303,36 @@ class AuthService:
             refresh_token,
             token_type="refresh",
             audience=self.settings.token_audience,
-            issuer=self.settings.token_issuer
+            issuer=self.settings.token_issuer,
         )
-        
+
         if not token_data:
             return None
-            
+
         # Here you would typically check if the token is revoked in your database
         # and implement token blacklisting if needed
-        
+
         # Create new token pair with rotated refresh token
         new_token_pair = self.create_token_pair(
             node_id=token_data.node_id,
             node_type=token_data.node_type,
             scopes=token_data.scopes,
             # Optionally set a new JTI for the new refresh token
-            refresh_token_jti=os.urandom(16).hex()
+            refresh_token_jti=os.urandom(16).hex(),
         )
-        
+
         # Here you would store the new refresh token and optionally revoke the old one
         # in your database
-        
+
         return new_token_pair
 
     def generate_api_key(self, node_id: str, node_type: str) -> str:
         """Generate a new API key for a node.
-        
+
         Args:
             node_id: Unique node identifier
             node_type: Type of node
-            
+
         Returns:
             Generated API key (JWT token)
         """
@@ -340,7 +343,7 @@ class AuthService:
             node_type=node_type,
             access_token_expires=expires_delta,
             refresh_token_expires=expires_delta,
-            scopes=["api_key"]
+            scopes=["api_key"],
         ).access_token
 
 
@@ -358,7 +361,8 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
 
 
 def get_current_user(
-    token: str = Depends(oauth2_scheme), auth_service: AuthService = Depends(get_auth_service)
+    token: str = Depends(oauth2_scheme),
+    auth_service: AuthService = Depends(get_auth_service),
 ) -> TokenData:
     """
     Dependency to get the current user from a token in the Authorization header.

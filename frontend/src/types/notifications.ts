@@ -14,14 +14,31 @@ export interface NotificationOptions {
   };
   createdAt?: Date;
   read?: boolean;
+  archived?: boolean;
   data?: Record<string, any>;
 }
 
-export interface Notification extends NotificationOptions {
+export interface Notification {
   id: string;
   type: NotificationType;
-  createdAt: Date;
+  title: string;
+  message: string;
+  timestamp: string; // ISO string format
   read: boolean;
+  archived: boolean;
+  action?: {
+    label: string;
+    callback: () => void;
+  };
+  data?: Record<string, any>;
+  autoDismiss?: number | boolean;
+  dismissible?: boolean;
+}
+
+export interface NotificationPreferences {
+  email: boolean;
+  push: boolean;
+  inApp: boolean;
 }
 
 export interface NotificationService {
@@ -37,6 +54,7 @@ export interface NotificationService {
   // Notification management
   markAsRead(id: string): void;
   markAllAsRead(): void;
+  archive(id: string): void;
   getUnreadCount(): number;
   getNotifications(): Notification[];
   

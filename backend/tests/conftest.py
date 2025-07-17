@@ -15,21 +15,21 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from httpx import AsyncClient
 from sqlalchemy import event, text
-from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.asyncio import (
-    AsyncSession,
-    create_async_engine,
-    async_sessionmaker,
     AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
 )
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
 from app.core.security import create_access_token
 from app.database import Base, get_db
 from app.main import app as main_app
-from app.models import User, Company, Department, DepartmentRequest, Role, Permission
-from app.models.department_request import RequestStatus, RequestPriority, RequestType
+from app.models import Company, Department, DepartmentRequest, Permission, Role, User
+from app.models.department_request import RequestPriority, RequestStatus, RequestType
 
 # Use a separate test database with file-based SQLite in memory with shared cache
 # This allows the same in-memory database to be accessed from multiple connections
@@ -51,6 +51,7 @@ TestingSessionLocal = async_sessionmaker(
     expire_on_commit=False,  # Prevents SQLAlchemy from expiring objects after commit
 )
 
+
 @pytest.fixture(scope="session")
 async def create_test_tables():
     """Create all database tables once before any tests run."""
@@ -61,11 +62,13 @@ async def create_test_tables():
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 
+
 @pytest.fixture(autouse=True)
 async def cleanup_database(create_test_tables):
     """Clean up data while keeping tables between tests."""
     # The create_test_tables fixture ensures tables exist
     yield
+
 
 @pytest.fixture(autouse=True)
 async def cleanup_users():
@@ -80,6 +83,7 @@ async def cleanup_users():
             await session.commit()
     yield
 
+
 @pytest.fixture(autouse=True)
 async def cleanup_other_tables():
     """Cleanup related tables before each test."""
@@ -88,16 +92,20 @@ async def cleanup_other_tables():
         tables = ["department_requests", "departments", "companies"]
         for table in tables:
             result = await session.execute(
-                text(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table}'")
+                text(
+                    f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table}'"
+                )
             )
             if result.scalar():
                 await session.execute(text(f"DELETE FROM {table}"))
         await session.commit()
     yield
 
+
 # ==============================================================================
 # Database Setup and Teardown
 # ==============================================================================
+
 
 @pytest.fixture(scope="session")
 def event_loop():
@@ -105,6 +113,7 @@ def event_loop():
     loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop
     loop.close()
+
 
 @pytest.fixture(scope="function")
 async def db_session() -> AsyncGenerator[AsyncSession, None]:
@@ -121,7 +130,7 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
     """
     async with test_engine.connect() as connection:
         await connection.run_sync(Base.metadata.create_all)
-        
+
         transaction = await connection.begin()
         session = TestingSessionLocal(bind=connection)
 
@@ -130,23 +139,26 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
         finally:
             await session.close()
             await transaction.rollback()
-            
+
             # Drop tables within the same connection context
             # Start a new transaction for the teardown DDL
             await connection.run_sync(Base.metadata.drop_all)
+
 
 # ==============================================================================
 # Test Client Fixtures
 # ==============================================================================
 
+
 @pytest.fixture(scope="function")
 async def async_client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     """
     Create a test client for making HTTP requests to the FastAPI application.
-    
+
     This fixture overrides the database dependency to use the test database
     session and provides an AsyncClient for making requests to the application.
     """
+
     # Override the get_db dependency to use our test session
     async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
         try:
@@ -154,20 +166,22 @@ async def async_client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, 
         finally:
             # Don't close the session here, let the db_session fixture handle it
             pass
-    
+
     # Apply the override
     main_app.dependency_overrides[get_db] = override_get_db
-    
+
     # Create and return the test client
     async with AsyncClient(app=main_app, base_url="http://test") as client:
         yield client
-    
+
     # Clean up overrides
     main_app.dependency_overrides.clear()
+
 
 # ==============================================================================
 # Test Data Fixtures
 # ==============================================================================
+
 
 @pytest.fixture(scope="function")
 async def test_company(db_session: AsyncSession) -> Company:
@@ -181,6 +195,7 @@ async def test_company(db_session: AsyncSession) -> Company:
     await db_session.commit()
     await db_session.refresh(company)
     return company
+
 
 @pytest.fixture(scope="function")
 async def test_department(
@@ -198,6 +213,7 @@ async def test_department(
     await db_session.refresh(department)
     return department
 
+
 @pytest.fixture(scope="function")
 async def test_user(db_session: AsyncSession, test_department: Department) -> User:
     """Create and return a test user."""
@@ -214,6 +230,7 @@ async def test_user(db_session: AsyncSession, test_department: Department) -> Us
     await db_session.refresh(user)
     return user
 
+
 @pytest.fixture(scope="function")
 async def test_superuser(db_session: AsyncSession, test_department: Department) -> User:
     """Create and return a test superuser."""
@@ -229,6 +246,7 @@ async def test_superuser(db_session: AsyncSession, test_department: Department) 
     await db_session.commit()
     await db_session.refresh(user)
     return user
+
 
 @pytest.fixture(scope="function")
 async def test_department_request(
@@ -249,38 +267,46 @@ async def test_department_request(
     await db_session.refresh(request)
     return request
 
+
 # ==============================================================================
 # Authentication Fixtures
 # ==============================================================================
+
 
 @pytest.fixture(scope="function")
 def test_password() -> str:
     """Return a test password."""
     return "testpass"
 
+
 @pytest.fixture(scope="function")
 async def test_token(test_user: User) -> str:
     """Generate a JWT token for the test user."""
     return create_access_token(subject=test_user.id)
+
 
 @pytest.fixture(scope="function")
 async def test_superuser_token(test_superuser: User) -> str:
     """Generate a JWT token for the test superuser."""
     return create_access_token(subject=test_superuser.id)
 
+
 @pytest.fixture(scope="function")
 async def auth_headers(test_token: str) -> dict[str, str]:
     """Return authorization headers with a valid JWT token."""
     return {"Authorization": f"Bearer {test_token}"}
+
 
 @pytest.fixture(scope="function")
 async def superuser_auth_headers(test_superuser_token: str) -> dict[str, str]:
     """Return authorization headers with a valid superuser JWT token."""
     return {"Authorization": f"Bearer {test_superuser_token}"}
 
+
 # ==============================================================================
 # Test Configuration
 # ==============================================================================
+
 
 def pytest_configure(config):
     """Configure pytest with custom markers and settings."""
@@ -294,6 +320,7 @@ def pytest_configure(config):
         "db_test: mark test as requiring database access",
     )
 
+
 # Ensure all tests have the async_test marker
 # This helps catch tests that aren't properly marked as async
 def pytest_collection_modifyitems(config, items):
@@ -301,6 +328,7 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if "async" in item.fixturenames or "_async" in item.name:
             item.add_marker(pytest.mark.asyncio)
+
 
 # ==============================================================================
 # Database Configuration

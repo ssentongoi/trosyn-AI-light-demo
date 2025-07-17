@@ -49,6 +49,7 @@ interface NotificationService {
   sendToUsers(data: Omit<Notification, 'id' | 'read' | 'createdAt' | 'updatedAt'>, userIds: string[]): Promise<{ success: boolean }>;
   broadcast(data: Omit<Notification, 'id' | 'read' | 'createdAt' | 'updatedAt'>): Promise<{ success: boolean }>;
   disconnect(): void;
+  sendNotification<T = any>(type: string, data?: Record<string, any>): boolean;
 }
 
 // Create a custom hook for notification service
@@ -88,11 +89,13 @@ export const useNotificationService = (): NotificationService => {
     type: string, 
     data: Record<string, any> = {}
   ): boolean => {
-    return sendMessage({
+    const message: WebSocketMessage = {
+      id: Math.random().toString(36).substr(2, 9),
       type,
-      ...data,
-      timestamp: new Date().toISOString()
-    });
+      timestamp: new Date().toISOString(),
+      ...data
+    };
+    return sendMessage(message);
   }, [sendMessage]);
 
   // Subscribe to a specific notification type
@@ -234,11 +237,8 @@ export const useNotificationService = (): NotificationService => {
     sendToUsers,
     broadcast,
     disconnect,
-    // Additional methods
+    // Send notification method
     sendNotification,
-    sendTypingIndicator,
-    sendDirectMessage,
-    subscribeToChannel,
   };
 };
 
@@ -249,7 +249,15 @@ export const notificationService: NotificationService = {
   subscribe: () => () => {},
   getNotifications: async () => [],
   getUnreadCount: async () => 0,
-  markAsRead: async () => ({} as Notification),
+  markAsRead: async () => ({
+    id: '',
+    type: '',
+    title: '',
+    message: '',
+    read: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  }),
   markAllAsRead: async () => ({ count: 0 }),
   deleteNotification: async () => {},
   clearAll: async () => {},
@@ -269,6 +277,7 @@ export const notificationService: NotificationService = {
   sendToUsers: async () => ({ success: true }),
   broadcast: async () => ({ success: true }),
   disconnect: () => {},
+  sendNotification: () => true,
 };
 
 export { notificationEmitter };

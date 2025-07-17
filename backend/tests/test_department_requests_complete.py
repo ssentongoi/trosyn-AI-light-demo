@@ -4,71 +4,68 @@ Complete test suite for Department Request API endpoints.
 This module provides comprehensive test coverage for the Department Request API,
 including success cases, validation errors, and edge cases.
 """
-import pytest
-import pytest_asyncio
-from fastapi.testclient import TestClient
-from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import NullPool
-from typing import AsyncGenerator, Dict, Any, Generator
-from sqlalchemy import select, text
-from datetime import datetime, timedelta
+
 import asyncio
 
 # Standard library imports
 import logging
 import os
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator, Dict, Generator
 
 # Third-party imports
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from httpx import AsyncClient
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
 
 # Add the backend directory to Python path
 BACKEND_DIR = Path(__file__).parent.parent
 sys.path.append(str(BACKEND_DIR))
 
+from app.core.config import settings
+from app.core.security import create_access_token, get_password_hash
+from app.database import (
+    DATABASE_URL,
+    create_tables,
+    drop_db,
+)
+from app.database import engine as app_engine
+from app.database import (
+    get_db,
+    import_models,
+    init_db,
+)
+
 # Import test app and models
 from app.db.base import Base  # Import Base from db.base
 from app.models import (
-    DepartmentRequest, 
-    Company, 
-    Department, 
-    User,
-    Role,
-    Permission,
-    Notification,
-    RequestComment,
-    RequestAttachment,
-    RequestHistory,
-    Document,
+    ChatConversation,
     ChatMessage,
-    ChatConversation
+    Company,
+    Department,
+    DepartmentRequest,
+    Document,
+    Notification,
+    Permission,
+    RequestAttachment,
+    RequestComment,
+    RequestHistory,
+    Role,
+    User,
 )
-from app.schemas.department_request import RequestStatus, RequestType, RequestPriority
-from app.core.security import create_access_token, get_password_hash
-from app.database import (
-    get_db, 
-    DATABASE_URL, 
-    import_models, 
-    create_tables, 
-    drop_db, 
-    init_db,
-    engine as app_engine
-)
-from app.core.config import settings
+from app.schemas.department_request import RequestPriority, RequestStatus, RequestType
 
 # Configure logging
 logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -83,20 +80,20 @@ from app.models import (
     notification,
     permission,
     role,
-    user
+    user,
 )
 
 # Test data constants
 TEST_COMPANY = {
     "name": "Test Company",
     "description": "Test Company Description",
-    "is_active": True
+    "is_active": True,
 }
 
 TEST_DEPARTMENT = {
     "name": "Test Department",
     "description": "Test Department Description",
-    "is_active": True
+    "is_active": True,
 }
 
 TEST_USER = {
@@ -105,7 +102,7 @@ TEST_USER = {
     "full_name": "Test User",
     "password": "testpassword123",
     "is_active": True,
-    "is_superuser": False
+    "is_superuser": False,
 }
 
 # Ensure all models are imported and registered with SQLAlchemy
@@ -124,11 +121,11 @@ test_engine = create_async_engine(
     future=True,
     poolclass=NullPool,
     connect_args={
-        "check_same_thread": False, 
-        "timeout": 30.0, 
+        "check_same_thread": False,
+        "timeout": 30.0,
         "uri": True,
-        "isolation_level": None  # Let SQLAlchemy handle transactions
-    }
+        "isolation_level": None,  # Let SQLAlchemy handle transactions
+    },
 )
 
 # Override the app's engine with our test engine
@@ -137,6 +134,7 @@ app_engine = test_engine
 # Ensure all models are imported and registered with SQLAlchemy
 import_models()
 
+
 # Create all tables before running tests
 @pytest_asyncio.fixture(scope="session", autouse=True)
 async def setup_database():
@@ -144,20 +142,21 @@ async def setup_database():
     # Drop all tables if they exist
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
-    
+
     # Create all tables
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
+
     logger.info("Test database tables created successfully")
-    
+
     yield  # Wait for tests to complete
-    
+
     # Clean up after tests
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
-    
+
     logger.info("Test database tables dropped")
+
 
 # Import all models to ensure they are registered with SQLAlchemy
 from app.models import *  # noqa
@@ -168,19 +167,13 @@ TestingSessionLocal = async_sessionmaker(
     autoflush=False,
     bind=test_engine,
     class_=AsyncSession,
-    expire_on_commit=False
+    expire_on_commit=False,
 )
 
 # Test data
-TEST_COMPANY = {
-    "name": "TestCo",
-    "description": "A test company"
-}
+TEST_COMPANY = {"name": "TestCo", "description": "A test company"}
 
-TEST_DEPARTMENT = {
-    "name": "Engineering",
-    "description": "Engineering Department"
-}
+TEST_DEPARTMENT = {"name": "Engineering", "description": "Engineering Department"}
 
 TEST_USER = {
     "email": "test.user@testco.com",
@@ -188,18 +181,22 @@ TEST_USER = {
     "full_name": "Test User",
     "password": "testpassword123",
     "is_active": True,
-    "is_superuser": False
+    "is_superuser": False,
 }
+
 
 # Override the get_db dependency
 async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
     async with TestingSessionLocal() as session:
         yield session
 
+
 # Create test app
 from app.main import app
+
 app.dependency_overrides[get_db] = override_get_db
 pytestmark = pytest.mark.asyncio
+
 
 @pytest_asyncio.fixture(scope="function")
 async def db_session() -> AsyncGenerator[AsyncSession, None]:
@@ -210,48 +207,46 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
         class_=AsyncSession,
         expire_on_commit=False,
         autocommit=False,
-        autoflush=False
+        autoflush=False,
     )
-    
+
     # Create a new session
     session = TestingSessionLocal()
-    
+
     # Begin a transaction
     await session.begin()
-    
+
     try:
         yield session
         await session.rollback()  # Always rollback after test
     finally:
         await session.close()
-    
+
     # Create a new session for testing
     async with TestingSessionLocal() as session:
         try:
             # Ensure all models are properly registered
             import_models()
-            
+
             # Create initial test data
-            from app.models import Company, Department, User, Role, Permission
-            
+            from app.models import Company, Department, Permission, Role, User
+
             # Create test company
             company = Company(
                 name="Test Company",
                 description="Test Company Description",
-                is_active=True
+                is_active=True,
             )
             session.add(company)
             await session.flush()
-            
+
             # Create test department
             department = Department(
-                name="Test Department",
-                company_id=company.id,
-                is_active=True
+                name="Test Department", company_id=company.id, is_active=True
             )
             session.add(department)
             await session.flush()
-            
+
             # Create test user
             user = User(
                 email="test@example.com",
@@ -259,28 +254,28 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
                 full_name="Test User",
                 is_active=True,
                 company_id=company.id,
-                department_id=department.id
+                department_id=department.id,
             )
             session.add(user)
             await session.flush()
-            
+
             # Commit all test data
             await session.commit()
-            
+
             # Refresh objects to ensure we have the latest data
             await session.refresh(company)
             await session.refresh(department)
             await session.refresh(user)
-            
+
             # Yield the session with test data
             yield session
-            
+
         except Exception as e:
             await session.rollback()
             raise e
         finally:
             await session.close()
-    
+
 
 @pytest_asyncio.fixture(scope="function")
 async def test_client():
@@ -288,8 +283,11 @@ async def test_client():
     async with AsyncClient(app=app, base_url="http://test") as client:
         yield client
 
+
 @pytest_asyncio.fixture(scope="function")
-async def test_data(db_session: AsyncSession, test_client: AsyncClient) -> Dict[str, Any]:
+async def test_data(
+    db_session: AsyncSession, test_client: AsyncClient
+) -> Dict[str, Any]:
     """
     Creates all necessary test data for department request tests.
     - Creates a Company.
@@ -336,21 +334,20 @@ async def test_data(db_session: AsyncSession, test_client: AsyncClient) -> Dict[
         "department": department,
         "company": company,
         "headers": headers,
-        "test_client": test_client
+        "test_client": test_client,
     }
 
+
 @pytest.mark.asyncio
-async def test_create_department_request_success(
-    test_data: Dict[str, Any]
-):
+async def test_create_department_request_success(test_data: Dict[str, Any]):
     """Test successful creation of a department request."""
     print("\n=== Starting test_create_department_request_success ===")
-    
+
     # Print test data for debugging
     print(f"Test user ID: {test_data['user'].id}")
     print(f"Department ID: {test_data['department'].id}")
     print(f"Auth headers: {test_data['headers']}")
-    
+
     request_payload = {
         "title": "New High-Performance Laptops",
         "description": "Request for 3 new laptops for the dev team.",
@@ -358,7 +355,7 @@ async def test_create_department_request_success(
         "priority": RequestPriority.HIGH.value,
         "department_id": test_data["department"].id,
     }
-    
+
     print(f"\nSending request with payload: {request_payload}")
 
     # Make the request
@@ -368,14 +365,16 @@ async def test_create_department_request_success(
         json=request_payload,
         headers=test_data["headers"],
     )
-    
+
     print(f"\nResponse status: {response.status_code}")
     print(f"Response headers: {response.headers}")
     print(f"Response body: {response.text}")
 
     # Check status code first
-    assert response.status_code == 201, f"Expected 201, got {response.status_code}. Response: {response.text}"
-    
+    assert (
+        response.status_code == 201
+    ), f"Expected 201, got {response.status_code}. Response: {response.text}"
+
     # Parse response
     try:
         data = response.json()
@@ -383,34 +382,45 @@ async def test_create_department_request_success(
     except Exception as e:
         print(f"Failed to parse JSON response: {e}")
         raise
-    
+
     # Validate response data
     print("\nValidating response data...")
-    assert data["title"] == request_payload["title"], f"Title mismatch: {data['title']} != {request_payload['title']}"
-    assert data["description"] == request_payload["description"], f"Description mismatch"
-    assert data["request_type"] == request_payload["request_type"], f"Request type mismatch"
+    assert (
+        data["title"] == request_payload["title"]
+    ), f"Title mismatch: {data['title']} != {request_payload['title']}"
+    assert (
+        data["description"] == request_payload["description"]
+    ), f"Description mismatch"
+    assert (
+        data["request_type"] == request_payload["request_type"]
+    ), f"Request type mismatch"
     assert data["priority"] == request_payload["priority"], f"Priority mismatch"
-    assert data["status"] == RequestStatus.DRAFT.value, f"Status is not DRAFT: {data['status']}"
-    assert data["department_id"] == request_payload["department_id"], f"Department ID mismatch"
-    assert data["requester_id"] == test_data["user"].id, f"Requester ID mismatch: {data['requester_id']} != {test_data['user'].id}"
+    assert (
+        data["status"] == RequestStatus.DRAFT.value
+    ), f"Status is not DRAFT: {data['status']}"
+    assert (
+        data["department_id"] == request_payload["department_id"]
+    ), f"Department ID mismatch"
+    assert (
+        data["requester_id"] == test_data["user"].id
+    ), f"Requester ID mismatch: {data['requester_id']} != {test_data['user'].id}"
     assert "id" in data, "Missing ID in response"
-    
+
     # Verify the record was created in the database
     stmt = select(DepartmentRequest).where(DepartmentRequest.id == data["id"])
     result = await db_session.execute(stmt)
     db_request = result.scalar_one_or_none()
     assert db_request is not None, "Request not found in database"
     print(f"\nFound request in database with ID: {db_request.id}")
-    
+
     print("\n=== test_create_department_request_success completed successfully ===")
     assert "created_at" in data
     assert "updated_at" in data
     assert data["approver"] is None
 
+
 async def test_get_department_request_success(
-    test_client: AsyncClient,
-    db_session: AsyncSession,
-    test_data: Dict[str, Any]
+    test_client: AsyncClient, db_session: AsyncSession, test_data: Dict[str, Any]
 ):
     """Test successful retrieval of a department request."""
     # First, create a request to retrieve
@@ -446,24 +456,21 @@ async def test_get_department_request_success(
     assert "updated_at" in data
     assert data["approver"] is None
 
+
 async def test_create_department_request_validation_errors(
-    test_client: AsyncClient,
-    test_data: Dict[str, Any],
-    db_session: AsyncSession
+    test_client: AsyncClient, test_data: Dict[str, Any], db_session: AsyncSession
 ):
     """Test validation errors for department request creation"""
 
     # Test missing required fields
     response = await test_client.post(
-        "/api/v1/department-requests/",
-        json={},
-        headers=test_data["headers"]
+        "/api/v1/department-requests/", json={}, headers=test_data["headers"]
     )
 
     assert response.status_code == 422
     response_data = response.json()
     assert "detail" in response_data
-    
+
     # Verify validation error details
     errors = {error["loc"][-1]: error["msg"] for error in response_data["detail"]}
     assert "title" in errors
@@ -480,9 +487,9 @@ async def test_create_department_request_validation_errors(
             "description": "Test Description",
             "request_type": "invalid_type",
             "priority": Priority.HIGH.value,
-            "department_id": test_data["department"].id
+            "department_id": test_data["department"].id,
         },
-        headers=test_data["headers"]
+        headers=test_data["headers"],
     )
     assert response.status_code == 422
 
@@ -494,9 +501,9 @@ async def test_create_department_request_validation_errors(
             "description": "Test Description",
             "request_type": RequestType.PURCHASE.value,
             "priority": "invalid_priority",
-            "department_id": test_data["department"].id
+            "department_id": test_data["department"].id,
         },
-        headers=test_data["headers"]
+        headers=test_data["headers"],
     )
     assert response.status_code == 422
 
@@ -508,16 +515,18 @@ async def test_create_department_request_validation_errors(
             "description": "Test Description",
             "request_type": RequestType.PURCHASE.value,
             "priority": Priority.HIGH.value,
-            "department_id": 99999  # Non-existent department
+            "department_id": 99999,  # Non-existent department
         },
-        headers=test_data["headers"]
+        headers=test_data["headers"],
     )
-    assert response.status_code in [404, 422]  # Could be either depending on your API design
+    assert response.status_code in [
+        404,
+        422,
+    ]  # Could be either depending on your API design
+
 
 async def test_get_department_request_success(
-    test_client: AsyncClient,
-    db_session: AsyncSession,
-    test_data: Dict[str, Any]
+    test_client: AsyncClient, db_session: AsyncSession, test_data: Dict[str, Any]
 ):
     """Test successful retrieval of department request"""
 
@@ -529,9 +538,9 @@ async def test_get_department_request_success(
             "description": "Test Description",
             "request_type": RequestType.PURCHASE.value,
             "priority": Priority.HIGH.value,
-            "department_id": test_data["department"].id
+            "department_id": test_data["department"].id,
         },
-        headers=test_data["headers"]
+        headers=test_data["headers"],
     )
 
     assert create_response.status_code == 201
@@ -540,7 +549,7 @@ async def test_get_department_request_success(
     # Now retrieve it
     get_response = await test_client.get(
         f"/api/v1/department-requests/{created_request['id']}",
-        headers=test_data["headers"]
+        headers=test_data["headers"],
     )
 
     assert get_response.status_code == 200
@@ -556,26 +565,23 @@ async def test_get_department_request_success(
     assert retrieved_request["requester_id"] == created_request["requester_id"]
     assert retrieved_request["status"] == created_request["status"]
 
+
 async def test_get_department_request_not_found(
-    test_client: AsyncClient,
-    test_data: Dict[str, Any]
+    test_client: AsyncClient, test_data: Dict[str, Any]
 ):
     """Test 404 error for non-existent department request"""
 
     response = await test_client.get(
-        "/api/v1/department-requests/99999",
-        headers=test_data["headers"]
+        "/api/v1/department-requests/99999", headers=test_data["headers"]
     )
 
     assert response.status_code == 404
     assert "not found" in response.json()["detail"].lower()
 
-async def test_unauthorized_access(
-    test_client: AsyncClient,
-    db_session: AsyncSession
-):
+
+async def test_unauthorized_access(test_client: AsyncClient, db_session: AsyncSession):
     """Test that requests without proper authentication are rejected"""
-    
+
     # Test without Authorization header
     response = await test_client.post(
         "/api/v1/department-requests/",
@@ -584,8 +590,8 @@ async def test_unauthorized_access(
             "description": "Test Description",
             "request_type": RequestType.PURCHASE.value,
             "priority": Priority.HIGH.value,
-            "department_id": 1
-        }
+            "department_id": 1,
+        },
     )
     assert response.status_code == 401
 
@@ -597,8 +603,8 @@ async def test_unauthorized_access(
             "description": "Test Description",
             "request_type": RequestType.PURCHASE.value,
             "priority": Priority.HIGH.value,
-            "department_id": 1
+            "department_id": 1,
         },
-        headers={"Authorization": "Bearer invalid_token"}
+        headers={"Authorization": "Bearer invalid_token"},
     )
     assert response.status_code == 401

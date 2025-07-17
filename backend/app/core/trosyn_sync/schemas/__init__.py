@@ -1,8 +1,13 @@
-from .document import DocumentCreate, DocumentResponse, DocumentUpdate, DocumentVersionResponse
+from .document import (
+    DocumentCreate,
+    DocumentResponse,
+    DocumentUpdate,
+    DocumentVersionResponse,
+)
 
 __all__ = [
-    "DocumentCreate", 
-    "DocumentResponse", 
-    "DocumentUpdate", 
-    "DocumentVersionResponse"
+    "DocumentCreate",
+    "DocumentResponse",
+    "DocumentUpdate",
+    "DocumentVersionResponse",
 ]

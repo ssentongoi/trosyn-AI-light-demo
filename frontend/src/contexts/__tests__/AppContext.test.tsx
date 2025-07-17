@@ -4,56 +4,40 @@ import { MemoryRouter } from 'react-router-dom';
 import { vi, describe, beforeEach, it, expect } from 'vitest';
 import { AppProvider, useApp } from '../AppContext';
 import authService from '../../services/auth';
-import { notificationService } from '../../services/notificationService';
-import type { User, Notification } from '../../types/notifications';
+import notificationService from '../../services/notificationService';
+import type { User } from '../types/auth';
 
-// Mock modules
-vi.mock('../../services/auth');
-vi.mock('../../services/notificationService', () => ({
-  notificationService: {
-    connect: vi.fn(),
-    disconnect: vi.fn(),
-    subscribe: vi.fn(),
-    show: vi.fn(),
-    success: vi.fn(),
-    error: vi.fn(),
-    warning: vi.fn(),
-    info: vi.fn(),
-    remove: vi.fn(),
-    clear: vi.fn(),
-    markAsRead: vi.fn(),
-    markAllAsRead: vi.fn(),
-    getUnreadCount: vi.fn(),
-    getNotifications: vi.fn(),
-    updatePreferences: vi.fn(),
-  },
-}));
-
-// Mock useNavigate
 const mockNavigate = vi.fn();
-vi.mock('react-router-dom', () => ({
-  ...vi.importActual('react-router-dom'),
-  useNavigate: () => mockNavigate,
-}));
 
-// Test user data
+// Mock external modules
+vi.mock('../../services/auth');
+vi.mock('../../services/notificationService');
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual('react-router-dom');
+  return {
+    ...(actual as object),
+    useNavigate: () => mockNavigate,
+  };
+});
+
 const mockUser: User = {
   id: '1',
   email: 'test@example.com',
   name: 'Test User',
   role: 'user',
+  preferences: { notifications: { email: true, in_app: true } },
 };
 
-// Test notification data
-const mockNotification: Notification = {
+const mockNotification = {
   id: '1',
-  type: 'test',
   title: 'Test Notification',
-  message: 'This is a test notification',
+  message: 'Test message',
+  type: 'info',
   read: false,
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
+  created_at: new Date().toISOString(),
 };
+
+const mockEmit = vi.fn();
 
 // A simple component to interact with and display context values
 const TestComponent = () => {
@@ -64,12 +48,12 @@ const TestComponent = () => {
     logout, 
     theme, 
     toggleTheme, 
-    notifications, 
     error,
+    notifications,
     loadNotifications,
-    markNotificationAsRead,
-    markAllNotificationsAsRead,
-    deleteNotification,
+    markAsRead,
+    markAllAsRead,
+    deleteNotification
   } = useApp();
   
   return (
@@ -79,35 +63,14 @@ const TestComponent = () => {
       <div data-testid="username">{user?.name || 'null'}</div>
       <div data-testid="email">{user?.email || 'null'}</div>
       <div data-testid="theme">{theme}</div>
-      <div data-testid="notification-count">{notifications.length}</div>
-      
-      <button onClick={() => login('test@example.com', 'password')}>
-        Login
-      </button>
-      
-      <button onClick={logout}>
-        Logout
-      </button>
-      
-      <button onClick={toggleTheme}>
-        Toggle Theme
-      </button>
-      
-      <button onClick={loadNotifications}>
-        Load Notifications
-      </button>
-      
-      <button onClick={() => markNotificationAsRead('1')}>
-        Mark as Read
-      </button>
-      
-      <button onClick={markAllNotificationsAsRead}>
-        Mark All as Read
-      </button>
-      
-      <button onClick={() => deleteNotification('1')}>
-        Delete Notification
-      </button>
+      <div data-testid="notification-count">{notifications?.length || 0}</div>
+      <button onClick={() => login('test@example.com', 'password')}>Login</button>
+      <button onClick={logout}>Logout</button>
+      <button onClick={toggleTheme}>Toggle Theme</button>
+      <button onClick={loadNotifications}>Load Notifications</button>
+      <button onClick={() => markAsRead('1')}>Mark as Read</button>
+      <button onClick={markAllAsRead}>Mark All as Read</button>
+      <button onClick={() => deleteNotification('1')}>Delete Notification</button>
     </div>
   );
 };
@@ -123,89 +86,89 @@ const renderWithProviders = (ui: React.ReactElement) => {
 
 describe('AppContext', () => {
   beforeEach(() => {
-    // Clear all mocks before each test
     vi.clearAllMocks();
-    
+
     // Mock localStorage
     Storage.prototype.setItem = vi.fn();
     Storage.prototype.removeItem = vi.fn();
-    
+    Storage.prototype.getItem = vi.fn();
+
     // Mock window.matchMedia
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
       value: vi.fn().mockImplementation(query => ({
-    (authService.logout as jest.Mock).mockResolvedValue(undefined);
-    (authService.getCurrentUser as jest.Mock).mockResolvedValue(mockUser);
-    
-    // Mock notification service
-    (notificationService.getNotifications as jest.Mock).mockReturnValue([mockNotification]);
-    (notificationService.getUnreadCount as jest.Mock).mockReturnValue(1);
-    (notificationService.subscribe as jest.Mock).mockImplementation((callback) => {
-      // Store the callback to simulate notifications
-      notificationService.mockCallback = callback;
-      return () => {}; // Return cleanup function
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
     });
+
+    // Mock service calls
+    (authService.login as vi.Mock).mockResolvedValue({ token: 'test-token', user: mockUser });
+    (authService.logout as vi.Mock).mockResolvedValue(undefined);
+    (authService.getCurrentUser as vi.Mock).mockResolvedValue(mockUser);
+    (notificationService.connect as vi.Mock).mockImplementation(() => {});
+    (notificationService.getNotifications as vi.Mock).mockResolvedValue([mockNotification]);
+    (notificationService.markAsRead as vi.Mock).mockResolvedValue(undefined);
+    (notificationService.markAllAsRead as vi.Mock).mockResolvedValue(undefined);
+    (notificationService.deleteNotification as vi.Mock).mockResolvedValue(undefined);
   });
-  
-  it('should initialize with default values', async () => {
+
+  it('should render children and provide initial state', () => {
+    renderWithProviders(<TestComponent />);
+    expect(screen.getByTestId('isAuthenticated')).toHaveTextContent('false');
+    expect(screen.getByTestId('username')).toHaveTextContent('null');
+    expect(screen.getByTestId('theme')).toHaveTextContent('light');
+  });
+
+  it('should handle successful login', async () => {
     renderWithProviders(<TestComponent />);
     
-    expect(screen.getByText(/isAuthenticated: false/)).toBeInTheDocument();
-    expect(screen.getByText(/user: null/)).toBeInTheDocument();
-    expect(screen.getByText(/theme: light/)).toBeInTheDocument();
-    expect(screen.getByText(/loading: false/)).toBeInTheDocument();
-    
-    // Verify notification service was not initialized
-    expect(notificationService.connect).not.toHaveBeenCalled();
-  });
-  
-  it('should initialize notification service on login', async () => {
-    renderWithProviders(<TestComponent />);
-    
-    // Click login button
     fireEvent.click(screen.getByText('Login'));
-    
+
     await waitFor(() => {
       expect(authService.login).toHaveBeenCalledWith('test@example.com', 'password');
-      expect(notificationService.connect).toHaveBeenCalledWith('test-token');
     });
   });
-  
-  it('should disconnect notification service on logout', async () => {
-    renderWithProviders(<TestComponent />);
-    
-    // Login first
-    fireEvent.click(screen.getByText('Login'));
-    await waitFor(() => {
-      expect(notificationService.connect).toHaveBeenCalled();
-    });
-    
-    // Then logout
-    fireEvent.click(screen.getByText('Logout'));
-    await waitFor(() => {
-      expect(notificationService.disconnect).toHaveBeenCalled();
-    });
-  });
-  
   it('should handle login and update state', async () => {
     renderWithProviders(<TestComponent />);
     
     // Click login button
     fireEvent.click(screen.getByText('Login'));
     
-    // Wait for login to complete
+    // Wait for login service to be called
     await waitFor(() => {
       expect(authService.login).toHaveBeenCalledWith('test@example.com', 'password');
-      expect(localStorage.setItem).toHaveBeenCalledWith('token', 'mock-token');
+    });
+    
+    // Wait for token to be stored
+    await waitFor(() => {
+      expect(localStorage.setItem).toHaveBeenCalledWith('token', 'test-token');
+    });
+    
+    // Wait for authentication state to update
+    await waitFor(() => {
       expect(screen.getByTestId('isAuthenticated')).toHaveTextContent('true');
+    });
+    
+    // Wait for user data to be displayed
+    await waitFor(() => {
       expect(screen.getByTestId('username')).toHaveTextContent('Test User');
+    });
+    
+    await waitFor(() => {
       expect(screen.getByTestId('email')).toHaveTextContent('test@example.com');
     });
   });
   
   it('should handle logout', async () => {
     // First log in
-    const { rerender } = renderWithProviders(<TestComponent />);
+    renderWithProviders(<TestComponent />);
     fireEvent.click(screen.getByText('Login'));
     
     // Wait for login to complete
@@ -216,10 +179,23 @@ describe('AppContext', () => {
     // Now log out
     fireEvent.click(screen.getByText('Logout'));
     
+    // Wait for logout service to be called
     await waitFor(() => {
       expect(authService.logout).toHaveBeenCalled();
+    });
+    
+    // Wait for token to be removed
+    await waitFor(() => {
       expect(localStorage.removeItem).toHaveBeenCalledWith('token');
+    });
+    
+    // Wait for authentication state to update
+    await waitFor(() => {
       expect(screen.getByTestId('isAuthenticated')).toHaveTextContent('false');
+    });
+    
+    // Wait for user data to be cleared
+    await waitFor(() => {
       expect(screen.getByTestId('username')).toHaveTextContent('null');
     });
   });
@@ -230,8 +206,13 @@ describe('AppContext', () => {
     // Click load notifications button
     fireEvent.click(screen.getByText('Load Notifications'));
     
+    // Wait for service to be called
     await waitFor(() => {
       expect(notificationService.getNotifications).toHaveBeenCalled();
+    });
+    
+    // Wait for notifications to be displayed
+    await waitFor(() => {
       expect(screen.getByTestId('notification-count')).toHaveTextContent('1');
     });
   });

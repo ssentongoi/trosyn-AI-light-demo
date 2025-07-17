@@ -14,14 +14,14 @@ from .providers import (
     BaseAIProvider,
     DocumentProcessor,
     GeminiProvider,
-    UnstructuredDocumentProcessor
+    UnstructuredDocumentProcessor,
 )
 
 __all__ = [
-    'AIService',
-    'ai_config',
-    'BaseAIProvider',
-    'DocumentProcessor',
-    'GeminiProvider',
-    'UnstructuredDocumentProcessor'
+    "AIService",
+    "ai_config",
+    "BaseAIProvider",
+    "DocumentProcessor",
+    "GeminiProvider",
+    "UnstructuredDocumentProcessor",
 ]

@@ -1,7 +1,7 @@
 import json
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,7 +19,11 @@ from app.services.chat import ChatService
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 
-@router.post("/conversations/", response_model=ChatConversationInDB, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/conversations/",
+    response_model=ChatConversationInDB,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_conversation(
     conversation_data: ChatConversationCreate,
     db: AsyncSession = Depends(get_db),
@@ -44,7 +48,9 @@ async def get_conversations(
     )
 
 
-@router.get("/conversations/{conversation_id}", response_model=ChatConversationWithMessages)
+@router.get(
+    "/conversations/{conversation_id}", response_model=ChatConversationWithMessages
+)
 async def get_conversation(
     conversation_id: str,
     db: AsyncSession = Depends(get_db),
@@ -59,7 +65,9 @@ async def get_conversation(
     return conversation
 
 
-@router.delete("/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/conversations/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT
+)
 async def delete_conversation(
     conversation_id: str,
     db: AsyncSession = Depends(get_db),

@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { AppProvider } from '../../../contexts/AppContext';
 import UserManagement from '../UserManagement';
 import { useUserManagement } from '../../../hooks/useUserManagement';
+import { vi } from 'vitest';
 
 // Mock the custom hook
 vi.mock('../../../hooks/useUserManagement');

@@ -1,7 +1,9 @@
 """Test data utilities for department requests."""
+
 from datetime import datetime, timedelta
-from typing import Dict, Any
+from typing import Any, Dict
 from uuid import uuid4
+
 
 def create_test_company_data(**overrides) -> Dict[str, Any]:
     """Create test company data with optional overrides."""
@@ -13,6 +15,7 @@ def create_test_company_data(**overrides) -> Dict[str, Any]:
     data.update(overrides)
     return data
 
+
 def create_test_department_data(company_id: int, **overrides) -> Dict[str, Any]:
     """Create test department data with optional overrides."""
     data = {
@@ -23,6 +26,7 @@ def create_test_department_data(company_id: int, **overrides) -> Dict[str, Any]:
     }
     data.update(overrides)
     return data
+
 
 def create_test_user_data(department_id: int, **overrides) -> Dict[str, Any]:
     """Create test user data with optional overrides."""
@@ -38,11 +42,9 @@ def create_test_user_data(department_id: int, **overrides) -> Dict[str, Any]:
     data.update(overrides)
     return data
 
+
 def create_test_department_request_data(
-    requester_id: int, 
-    department_id: int,
-    approver_id: int,
-    **overrides
+    requester_id: int, department_id: int, approver_id: int, **overrides
 ) -> Dict[str, Any]:
     """Create test department request data with optional overrides."""
     data = {
@@ -60,7 +62,10 @@ def create_test_department_request_data(
     data.update(overrides)
     return data
 
-def create_test_comment_data(request_id: int, user_id: int, **overrides) -> Dict[str, Any]:
+
+def create_test_comment_data(
+    request_id: int, user_id: int, **overrides
+) -> Dict[str, Any]:
     """Create test comment data with optional overrides."""
     data = {
         "content": f"Test comment {uuid4().hex[:4]}",

@@ -5,10 +5,12 @@ These simplified schemas are designed to avoid serialization issues with relatio
 and ensure proper validation during testing.
 """
 
-from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional, List
 from datetime import datetime
 from enum import Enum
+from typing import List, Optional
+
+from pydantic import BaseModel, ConfigDict, Field
+
 
 class RequestType(str, Enum):
     PURCHASE = "purchase"
@@ -16,11 +18,13 @@ class RequestType(str, Enum):
     PERSONNEL = "personnel"
     EQUIPMENT = "equipment"
 
+
 class Priority(str, Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
     URGENT = "urgent"
+
 
 class Status(str, Enum):
     DRAFT = "draft"
@@ -30,7 +34,9 @@ class Status(str, Enum):
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
 
+
 # Simplified schemas for testing
+
 
 class TestUserSchema(BaseModel):
     id: int
@@ -39,11 +45,13 @@ class TestUserSchema(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+
 class TestDepartmentSchema(BaseModel):
     id: int
     name: str
 
     model_config = ConfigDict(from_attributes=True)
+
 
 class TestDepartmentRequestCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
@@ -51,6 +59,7 @@ class TestDepartmentRequestCreate(BaseModel):
     request_type: RequestType
     priority: Priority
     department_id: int
+
 
 class TestDepartmentRequestResponse(BaseModel):
     id: int
@@ -63,20 +72,19 @@ class TestDepartmentRequestResponse(BaseModel):
     requester_id: int
     created_at: datetime
     updated_at: datetime
-    
+
     # Optional relationships for testing
     requester: Optional[TestUserSchema] = None
     department: Optional[TestDepartmentSchema] = None
     approver: Optional[TestUserSchema] = None
 
     model_config = ConfigDict(
-        from_attributes=True,
-        json_encoders={
-            datetime: lambda v: v.isoformat()
-        }
+        from_attributes=True, json_encoders={datetime: lambda v: v.isoformat()}
     )
+
 
 class TestDepartmentRequestResponseWrapper(BaseModel):
     """Wrapper for API response with success flag and data"""
+
     success: bool = True
     data: TestDepartmentRequestResponse

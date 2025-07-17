@@ -13,27 +13,26 @@ from sqlalchemy.pool import StaticPool
 from app.db.base import Base
 from app.models import *  # Import all models to ensure they're registered with the metadata
 
+
 class _DatabaseManager:
     """
     Manages test database lifecycle with proper schema creation
     """
-    
+
     def __init__(self):
         # Store Base for table creation
         self.Base = Base
-        
+
         # Use in-memory SQLite for tests
         self.database_url = "sqlite+aiosqlite:///:memory:"
         self.engine = create_async_engine(
             self.database_url,
             poolclass=StaticPool,
             connect_args={"check_same_thread": False},
-            echo=False  # Set to True for SQL debugging
+            echo=False,  # Set to True for SQL debugging
         )
         self.async_session = async_sessionmaker(
-            bind=self.engine,
-            class_=AsyncSession,
-            expire_on_commit=False
+            bind=self.engine, class_=AsyncSession, expire_on_commit=False
         )
 
     async def create_tables(self):
@@ -53,8 +52,10 @@ class _DatabaseManager:
         """Clean up database connection"""
         await self.engine.dispose()
 
+
 # Global test database manager
 test_db_manager = _DatabaseManager()
+
 
 @pytest.fixture(scope="session")
 async def setup_test_database():
@@ -62,6 +63,7 @@ async def setup_test_database():
     await test_db_manager.create_tables()
     yield
     await test_db_manager.close()
+
 
 @pytest.fixture
 async def db_session(setup_test_database):

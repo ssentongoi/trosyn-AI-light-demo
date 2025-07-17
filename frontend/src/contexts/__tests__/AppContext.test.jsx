@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { AppProvider, useApp } from '../AppContext';
 import authService from '../../services/auth';
 import notificationService from '../../services/notification';
+import { vi } from 'vitest';
 
 // Use automatic mocks from __mocks__ directory
 vi.mock('../../services/auth');

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { 
   Box, 
   Toolbar, 
@@ -9,51 +9,55 @@ import {
   MenuItem, 
   Divider, 
   Tooltip,
-  Badge,
   CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  ButtonGroup,
+  LinearProgress
 } from '@mui/material';
 import {
   Save as SaveIcon,
   FolderOpen as OpenIcon,
   History as HistoryIcon,
-  Share as ShareIcon,
   MoreVert as MoreIcon,
   FileDownload as ExportIcon,
-  CompareArrows as CompareIcon,
-  CloudSync as AutoSaveIcon,
+  Restore as RestoreIcon,
+  SaveAs as SaveAsIcon
 } from '@mui/icons-material';
-import { Document } from '@/types/tauri';
-import { documentUtils } from '@/utils/documentUtils';
 import VersionHistory from './VersionHistory';
-import DocumentComparison from './DocumentComparison';
-import ExportDialog from './ExportDialog';
-import ShareDialog from './ShareDialog';
+import { DocumentVersion } from '@/types/document';
 
 interface DocumentToolbarProps {
-  document: Document;
   onSave: () => Promise<void>;
-  onOpen: () => Promise<void>;
-  onNew: () => void;
+  onSaveAs: () => Promise<void>;
+  onOpen: (path?: string) => Promise<void>;
   isSaving: boolean;
+  lastSaved: Date | null;
   hasUnsavedChanges: boolean;
-  onDocumentUpdate: (updatedDoc: Document) => void;
+  versions?: DocumentVersion[];
+  activeVersionId?: string | null;
+  onVersionSelect?: (version: DocumentVersion) => void;
 }
 
 const DocumentToolbar: React.FC<DocumentToolbarProps> = ({
-  document,
   onSave,
+  onSaveAs,
   onOpen,
-  onNew,
   isSaving,
+  lastSaved,
   hasUnsavedChanges,
-  onDocumentUpdate,
+  versions = [],
+  activeVersionId,
+  onVersionSelect
 }) => {
+
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
-  const [showComparison, setShowComparison] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
-  const [showShareDialog, setShowShareDialog] = useState(false);
-  const [selectedVersion, setSelectedVersion] = useState<Document['versions'][0] | null>(null);
+  const [selectedVersion, setSelectedVersion] = useState<DocumentVersion | null>(null);
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -63,224 +67,205 @@ const DocumentToolbar: React.FC<DocumentToolbarProps> = ({
     setAnchorEl(null);
   };
 
-  const handleVersionSelect = (version: Document['versions'][0]) => {
+  const handleVersionSelect = useCallback((version: typeof versions[0]) => {
     setSelectedVersion(version);
-    setShowVersionHistory(false);
-    setShowComparison(true);
-  };
+  }, []);
 
-  const handleRestoreVersion = async (version: Document['versions'][0]) => {
+  const handleRestoreClick = useCallback((version: typeof versions[0]) => {
+    setSelectedVersion(version);
+    setShowRestoreConfirm(true);
+  }, []);
+
+  const handleRestoreVersion = useCallback(async () => {
+    if (!selectedVersion) return;
+    
     try {
-      // In a real app, you would call your API to restore the version
-      const updatedDoc = {
-        ...document,
-        content: version.content,
-        versions: [
-          {
-            ...version,
-            id: `version-${Date.now()}`,
-            timestamp: new Date().toISOString(),
-            isAutoSave: false,
-          },
-          ...document.versions,
-        ],
-      };
-      
-      onDocumentUpdate(updatedDoc);
-      await onSave();
+      onVersionSelect(selectedVersion);
+      setShowRestoreConfirm(false);
+      setSelectedVersion(null);
     } catch (error) {
       console.error('Failed to restore version:', error);
+      throw error; // Re-throw to allow error handling in parent
     }
-  };
+  }, [onVersionSelect, selectedVersion]);
 
-  const handleExport = () => {
-    setShowExportDialog(true);
-    handleMenuClose();
-  };
-
-  const handleShare = () => {
-    setShowShareDialog(true);
-    handleMenuClose();
-  };
-
-  const handleCompare = () => {
-    if (document.versions.length > 1) {
-      setSelectedVersion(document.versions[1]); // Select the previous version
-      setShowComparison(true);
+  const handleSave = useCallback(async () => {
+    try {
+      await onSave();
+    } catch (error) {
+      console.error('Failed to save document:', error);
+      throw error; // Re-throw to allow error handling in parent
     }
-    handleMenuClose();
-  };
+  }, [onSave]);
+
+  const handleOpen = useCallback(async () => {
+    try {
+      await onOpen();
+    } catch (error) {
+      console.error('Failed to open document:', error);
+    }
+  }, [onOpen]);
+
+  const formatLastSaved = useCallback((date: Date | null) => {
+    if (!date) return 'Never saved';
+    
+    const now = new Date();
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    
+    if (diffInSeconds < 60) return 'Just now';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+    
+    return date.toLocaleDateString();
+  }, []);
 
   return (
-    <>
-      <Toolbar 
-        variant="dense" 
-        sx={{ 
-          borderBottom: '1px solid', 
-          borderColor: 'divider',
-          bgcolor: 'background.paper',
-          minHeight: '48px !important',
-        }}
-      >
-        <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-          <Typography variant="h6" noWrap component="div" sx={{ mr: 2 }}>
-            {document.title || 'Untitled Document'}
-          </Typography>
+    <Box sx={{ flexGrow: 1 }}>
+      <Toolbar variant="dense" disableGutters>
+        <ButtonGroup variant="text" size="small" sx={{ mr: 1 }}>
+          <Tooltip title={hasUnsavedChanges ? 'Save changes' : 'No changes to save'}>
+            <Button
+              color="inherit"
+              startIcon={isSaving ? <CircularProgress size={16} /> : <SaveIcon />}
+              onClick={handleSave}
+              disabled={isSaving || !hasUnsavedChanges}
+            >
+              {isSaving ? 'Saving...' : 'Save'}
+            </Button>
+          </Tooltip>
           
-          {hasUnsavedChanges && (
-            <Typography variant="caption" color="text.secondary" sx={{ mr: 2 }}>
-              (unsaved changes)
+          <Tooltip title="Save a copy of this document">
+            <Button
+              color="inherit"
+              startIcon={<SaveAsIcon />}
+              onClick={onSaveAs}
+              disabled={isSaving}
+            >
+              Save As
+            </Button>
+          </Tooltip>
+          
+          <Tooltip title="Open a document">
+            <Button
+              color="inherit"
+              startIcon={<OpenIcon />}
+              onClick={handleOpen}
+              disabled={isSaving}
+            >
+              Open
+            </Button>
+          </Tooltip>
+        </ButtonGroup>
+        
+        <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
+        
+        <ButtonGroup variant="text" size="small">
+          <Button
+            color="inherit"
+            startIcon={<HistoryIcon />}
+            onClick={() => setShowVersionHistory(true)}
+            disabled={isSaving || versions.length === 0}
+          >
+            Versions
+          </Button>
+          
+          <Tooltip title={`Last saved: ${lastSaved?.toLocaleString() || 'Never'}`}>
+            <Typography variant="caption" sx={{ ml: 1, alignSelf: 'center', color: 'text.secondary' }}>
+              {isSaving ? 'Saving...' : formatLastSaved(lastSaved)}
             </Typography>
-          )}
-          
-          <Box sx={{ flexGrow: 1 }} />
-          
-          <Tooltip title={hasUnsavedChanges ? 'Save (Ctrl+S)' : 'Saved'}>
-            <span>
-              <Button
-                color="primary"
-                size="small"
-                startIcon={
-                  isSaving ? (
-                    <CircularProgress size={16} color="inherit" />
-                  ) : (
-                    <SaveIcon />
-                  )
-                }
-                onClick={onSave}
-                disabled={isSaving || !hasUnsavedChanges}
-                sx={{ mr: 1 }}
-              >
-                {isSaving ? 'Saving...' : 'Save'}
-              </Button>
-            </span>
           </Tooltip>
-          
-          <Tooltip title="Auto-save">
-            <IconButton size="small" sx={{ mr: 1 }}>
-              <AutoSaveIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          
-          <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
-          
-          <Tooltip title="Version History">
-            <IconButton 
-              size="small" 
-              onClick={() => setShowVersionHistory(true)}
-              sx={{ mr: 1 }}
-            >
-              <Badge 
-                badgeContent={document.versions.length} 
-                color="primary" 
-                max={99}
-              >
-                <HistoryIcon />
-              </Badge>
-            </IconButton>
-          </Tooltip>
-          
-          <Tooltip title="Share">
-            <IconButton 
-              size="small" 
-              onClick={handleShare}
-              sx={{ mr: 1 }}
-            >
-              <ShareIcon />
-            </IconButton>
-          </Tooltip>
-          
+        </ButtonGroup>
+        
+        <Box sx={{ flexGrow: 1 }} />
+        
+        <Tooltip title="More options">
           <IconButton
-            size="small"
+            color="inherit"
             onClick={handleMenuOpen}
-            aria-label="more options"
+            disabled={isLoading}
           >
             <MoreIcon />
           </IconButton>
-          
-          <Menu
-            anchorEl={anchorEl}
-            open={Boolean(anchorEl)}
-            onClose={handleMenuClose}
-            anchorOrigin={{
-              vertical: 'bottom',
-              horizontal: 'right',
-            }}
-            transformOrigin={{
-              vertical: 'top',
-              horizontal: 'right',
-            }}
-          >
-            <MenuItem onClick={onNew}>
-              <OpenIcon fontSize="small" sx={{ mr: 1 }} />
-              New Document
-            </MenuItem>
-            <MenuItem onClick={onOpen}>
-              <OpenIcon fontSize="small" sx={{ mr: 1 }} />
-              Open...
-            </MenuItem>
-            
-            <Divider />
-            
-            <MenuItem onClick={handleExport}>
-              <ExportIcon fontSize="small" sx={{ mr: 1 }} />
-              Export...
-            </MenuItem>
-            
-            <MenuItem 
-              onClick={handleCompare}
-              disabled={document.versions.length <= 1}
-            >
-              <CompareIcon fontSize="small" sx={{ mr: 1 }} />
-              Compare Versions
-            </MenuItem>
-            
-            <Divider />
-            
-            <MenuItem onClick={handleShare}>
-              <ShareIcon fontSize="small" sx={{ mr: 1 }} />
-              Share...
-            </MenuItem>
-          </Menu>
-        </Box>
+        </Tooltip>
+        
+        <Menu
+          anchorEl={anchorEl}
+          open={Boolean(anchorEl)}
+          onClose={handleMenuClose}
+        >
+          <MenuItem onClick={() => {
+            setShowExportDialog(true);
+            handleMenuClose();
+          }}>
+            <ExportIcon sx={{ mr: 1 }} /> Export
+          </MenuItem>
+        </Menu>
       </Toolbar>
       
       {/* Version History Dialog */}
-      {showVersionHistory && (
-        <VersionHistory
-          document={document}
-          onVersionSelect={handleVersionSelect}
-          onRestore={handleRestoreVersion}
-          currentVersionId={document.versions[0]?.id}
-          onClose={() => setShowVersionHistory(false)}
-        />
-      )}
+      <Dialog 
+        open={showVersionHistory} 
+        onClose={() => setShowVersionHistory(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Document Version History</DialogTitle>
+        <DialogContent>
+          <VersionHistory
+            document={currentDocument}
+            onVersionSelect={handleVersionSelect}
+            onRestore={handleRestoreClick}
+            currentVersionId={currentDocument.versions[0]?.id}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowVersionHistory(false)}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Restore Version Confirmation Dialog */}
+      <Dialog
+        open={showRestoreConfirm}
+        onClose={() => setShowRestoreConfirm(false)}
+      >
+        <DialogTitle>Restore Version</DialogTitle>
+        <DialogContent>
+          <Typography>Are you sure you want to restore this version?</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            This will create a new version with the selected content.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowRestoreConfirm(false)}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={confirmRestore}
+            variant="contained"
+            color="primary"
+            startIcon={<RestoreIcon />}
+          >
+            Restore
+          </Button>
+        </DialogActions>
+      </Dialog>
       
-      {/* Document Comparison Dialog */}
-      {showComparison && selectedVersion && (
-        <DocumentComparison
-          open={showComparison}
-          onClose={() => setShowComparison(false)}
-          document={document}
-          selectedVersion={selectedVersion}
-          onRestore={handleRestoreVersion}
-        />
-      )}
-      
-      {/* Export Dialog */}
-      <ExportDialog
+      {/* Export Dialog - Placeholder for future implementation */}
+      <Dialog
         open={showExportDialog}
         onClose={() => setShowExportDialog(false)}
-        document={document}
-      />
-      
-      {/* Share Dialog */}
-      <ShareDialog
-        open={showShareDialog}
-        onClose={() => setShowShareDialog(false)}
-        document={document}
-      />
-    </>
+      >
+        <DialogTitle>Export Document</DialogTitle>
+        <DialogContent>
+          <Typography>Export functionality will be implemented here.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowExportDialog(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   );
 };
 

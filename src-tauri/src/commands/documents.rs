@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Window, Runtime, Emitter};
 use std::time::SystemTime;
@@ -96,63 +97,90 @@ pub struct Document {
 }
 
 impl Document {
-    /// Create a new document
+    /// Create a new document with the provided content
     pub fn new(title: String, content: serde_json::Value) -> Self {
         let now = Utc::now();
-        let version = DocumentVersion::new(content.clone(), false);
         
-        Self {
+        // Create the document with empty content by default
+        let mut doc = Self {
             id: Uuid::new_v4().to_string(),
             title,
-            content,
+            content: json!({ "content": "" }), // Start with empty content
             file_path: None,
-            versions: vec![version],
+            versions: vec![],
             created_at: now,
             updated_at: now,
             is_dirty: false,
             last_auto_save: None,
-            last_save_time: Some(now.timestamp()),
+            last_save_time: None,
+        };
+        
+        // Always add an empty version first
+        doc.versions.push(DocumentVersion::new(json!({ "content": "" }), false));
+        
+        // If content was provided and not empty, add it as a version
+        if content != json!({ "content": "" }) {
+            doc.add_version(content, false);
         }
+        
+        doc
     }
     
     /// Add a new version of the document
     pub fn add_version(&mut self, content: serde_json::Value, is_auto_save: bool) -> &DocumentVersion {
         let now = Utc::now();
         
-        // Create a new version with the current timestamp
-        let mut version = DocumentVersion {
-            id: Uuid::new_v4().to_string(),
-            content: content.clone(),
-            created_at: now,
-            is_auto_save,
-            size: 0, // This will be updated below
-            timestamp: now.timestamp(),
-        };
+        // First, check if we already have a version with the same content
+        // Skip the empty version at index 0 when checking for duplicates
+        let existing_index = self.versions.iter().skip(1).position(|v| v.content == content)
+            .map(|i| i + 1); // Adjust index since we skipped the first element
         
-        // Update the size based on the content
-        version.size = version.content.to_string().len();
-        
-        // Update the document's content
-        self.content = content;
-        
-        // If this is an auto-save, update the last auto-save time
-        if is_auto_save {
-            self.last_auto_save = Some(now);
+        if let Some(index) = existing_index {
+            // Update the existing version's timestamp
+            self.versions[index].timestamp = now.timestamp();
+            
+            // Update document metadata if this is not an auto-save
+            if !is_auto_save {
+                self.content = content;
+                self.updated_at = now;
+                self.last_save_time = Some(now.timestamp());
+                self.is_dirty = false;
+            } else {
+                self.last_auto_save = Some(now);
+            }
+            
+            // Return a reference to the existing version
+            // SAFETY: We know the index is valid because we just got it from position()
+            unsafe { self.versions.get_unchecked(index) }
         } else {
-            // For manual saves, update the last save time and clear the dirty flag
-            self.last_save_time = Some(now.timestamp());
-            self.is_dirty = false;
+            // Create a new version
+            let version = DocumentVersion::new(content.clone(), is_auto_save);
+            
+            // Add the new version to the end of the vector
+            self.versions.push(version);
+            
+            // If we have more than MAX_VERSIONS + 1 (including the empty version),
+            // remove the oldest non-empty version (which is at index 1)
+            while self.versions.len() > MAX_VERSIONS + 1 && self.versions.len() > 1 {
+                self.versions.remove(1);
+            }
+            
+            // Update document metadata
+            self.content = content;
+            self.updated_at = now;
+            
+            // Update save metadata
+            if is_auto_save {
+                self.last_auto_save = Some(now);
+            } else {
+                self.last_save_time = Some(now.timestamp());
+                self.is_dirty = false;
+            }
+            
+            // Return the most recent version (the one we just added)
+            // SAFETY: We just pushed a new version, so the vector is not empty
+            unsafe { self.versions.get_unchecked(self.versions.len() - 1) }
         }
-        
-        self.versions.insert(0, version);
-        self.updated_at = now;
-        
-        // Keep only the most recent MAX_VERSIONS versions
-        if self.versions.len() > MAX_VERSIONS {
-            self.versions.truncate(MAX_VERSIONS);
-        }
-        
-        &self.versions[0]
     }
     
     /// Get a specific version by ID
@@ -817,9 +845,7 @@ pub async fn export_document(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
     use chrono::Utc;
-    use uuid::Uuid;
     use std::time::Duration;
 
     // Test Data Builder
@@ -871,15 +897,23 @@ mod tests {
     }
     
     fn create_document_with_versions() -> Document {
-        let versions = vec![
-            json!({ "content": "v1" }),
-            json!({ "content": "v2" }),
-            json!({ "content": "v3" }),
-        ];
-        let mut doc = DocumentBuilder::new("Document with Versions").build();
-        for version in versions {
-            doc.add_version(version, false);
-        }
+        // Create a document with empty content
+        let mut doc = Document::new(
+            "Document with Versions".to_string(), 
+            json!({ "content": "" })
+        );
+        
+        // Clear any existing versions except the empty one
+        doc.versions.retain(|v| v.content == json!({ "content": "" }));
+        
+        // Add exactly 2 versions (v1 and v2)
+        doc.add_version(json!({ "content": "v1" }), false);
+        doc.add_version(json!({ "content": "v2" }), false);
+        
+        // Should have exactly 3 versions in total: ["", "v1", "v2"]
+        assert_eq!(doc.versions.len(), 3, "Document should have 3 versions (1 empty + 2 content)");
+        assert_eq!(doc.versions[0].content, json!({ "content": "" }), "First version should be empty");
+        
         doc
     }
 
@@ -976,7 +1010,7 @@ mod tests {
             let version = doc.get_version(version_id);
             
             assert!(version.is_some());
-            assert_eq!(version.unwrap().content, json!({ "content": "v2" }));
+            assert_eq!(version.unwrap().content, json!({ "content": "v1" }));
         }
 
         #[test]
@@ -1138,14 +1172,35 @@ mod tests {
             
             let start = std::time::Instant::now();
             
+            // Add more versions than MAX_VERSIONS to test version culling
             for i in 0..100 {
                 let content = json!({ "content": format!("Content {}", i) });
                 doc.add_version(content, false);
             }
             
             let duration = start.elapsed();
-            assert!(duration.as_millis() < 100); // Should complete in under 100ms
-            assert_eq!(doc.versions.len(), 101); // Initial + 100 updates
+            
+            // Should complete in a reasonable time (e.g., less than 10ms)
+            assert!(duration.as_millis() < 10, "Adding versions took too long: {:?}", duration);
+            
+            // Should have exactly MAX_VERSIONS + 1 versions (1 empty + MAX_VERSIONS content versions)
+            assert_eq!(doc.versions.len(), MAX_VERSIONS + 1, 
+                     "Should have exactly {} versions (1 empty + {} content versions)", 
+                     MAX_VERSIONS + 1, MAX_VERSIONS);
+            
+            // The first version should always be empty
+            assert_eq!(doc.versions[0].content, json!({ "content": "" }), 
+                      "First version should be empty");
+            
+            // The last version should be the most recent one we added (Content 99)
+            assert_eq!(doc.versions.last().unwrap().content, 
+                      json!({ "content": "Content 99" }), 
+                      "Last version should be the most recent one");
+            
+            // The second version should be the 90th content we added (since we keep the 10 most recent)
+            assert_eq!(doc.versions[1].content, 
+                      json!({ "content": "Content 90" }), 
+                      "Oldest kept version should be Content 90");
         }
 
         #[test]

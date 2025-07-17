@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import NotificationsPage from '../NotificationsPage';
 import { MemoryRouter } from 'react-router-dom';
+import { vi } from 'vitest';
 
 // Create a theme for testing
 const theme = createTheme();

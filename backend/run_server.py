@@ -16,7 +16,8 @@ sys.path.insert(0, str(backend_dir))
 
 # Load environment variables before importing anything else
 from dotenv import load_dotenv
-load_dotenv(backend_dir / '.env')
+
+load_dotenv(backend_dir / ".env")
 
 # Verify environment variables are loaded
 print("\n=== Environment Variables ===")
@@ -32,5 +33,6 @@ app = fastapi_app
 
 if __name__ == "__main__":
     import uvicorn
+
     print("\n=== Starting Uvicorn server ===")
     uvicorn.run("run_server:app", host="0.0.0.0", port=8000, reload=True)

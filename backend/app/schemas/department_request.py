@@ -1,8 +1,9 @@
 from datetime import datetime
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
-from pydantic import field_validator
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field, field_validator
+
 
 # Enums for request status, priority, and type
 class RequestStatus(str, Enum):
@@ -14,11 +15,13 @@ class RequestStatus(str, Enum):
     COMPLETED = "completed"
     CANCELLED = "cancelled"
 
+
 class RequestPriority(str, Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
+
 
 class RequestType(str, Enum):
     EQUIPMENT = "equipment"
@@ -27,6 +30,7 @@ class RequestType(str, Enum):
     MAINTENANCE = "maintenance"
     OTHER = "other"
 
+
 # Base schemas
 class RequestAttachmentBase(BaseModel):
     filename: str
@@ -34,21 +38,26 @@ class RequestAttachmentBase(BaseModel):
     file_size: int
     mime_type: str
 
+
 class RequestCommentBase(BaseModel):
     content: str
     is_internal: bool = False
+
 
 class RequestHistoryBase(BaseModel):
     action: str
     old_value: Optional[str] = None
     new_value: Optional[str] = None
 
+
 # Create schemas
 class RequestAttachmentCreate(RequestAttachmentBase):
     pass
 
+
 class RequestCommentCreate(RequestCommentBase):
     pass
+
 
 class DepartmentRequestCreate(BaseModel):
     title: str = Field(..., min_length=5, max_length=255)
@@ -57,16 +66,19 @@ class DepartmentRequestCreate(BaseModel):
     request_type: RequestType
     priority: RequestPriority = RequestPriority.MEDIUM
     due_date: Optional[datetime] = None
-    estimated_cost: Optional[int] = Field(None, ge=0, description="Estimated cost in cents")
+    estimated_cost: Optional[int] = Field(
+        None, ge=0, description="Estimated cost in cents"
+    )
     custom_fields: Optional[Dict[str, Any]] = None
-    
-    @field_validator('due_date')
+
+    @field_validator("due_date")
     def validate_due_date(cls, v):
         if v and v.tzinfo:
             v = v.replace(tzinfo=None)
         if v and v < datetime.utcnow():
             raise ValueError("Due date must be in the future")
         return v
+
 
 # Update schemas
 class RequestAttachmentUpdate(BaseModel):
@@ -75,9 +87,11 @@ class RequestAttachmentUpdate(BaseModel):
     file_size: Optional[int] = None
     mime_type: Optional[str] = None
 
+
 class RequestCommentUpdate(BaseModel):
     content: Optional[str] = None
     is_internal: Optional[bool] = None
+
 
 class DepartmentRequestUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=5, max_length=255)
@@ -86,17 +100,20 @@ class DepartmentRequestUpdate(BaseModel):
     priority: Optional[RequestPriority] = None
     request_type: Optional[RequestType] = None
     due_date: Optional[datetime] = None
-    estimated_cost: Optional[int] = Field(None, ge=0, description="Estimated cost in cents")
+    estimated_cost: Optional[int] = Field(
+        None, ge=0, description="Estimated cost in cents"
+    )
     approver_id: Optional[int] = None
     custom_fields: Optional[Dict[str, Any]] = None
-    
-    @field_validator('due_date')
+
+    @field_validator("due_date")
     def validate_due_date(cls, v):
         if v and v.tzinfo:
             v = v.replace(tzinfo=None)
         if v and v < datetime.utcnow():
             raise ValueError("Due date must be in the future")
         return v
+
 
 # In DB schemas (with IDs and timestamps)
 class RequestAttachmentInDBBase(RequestAttachmentBase):
@@ -108,6 +125,7 @@ class RequestAttachmentInDBBase(RequestAttachmentBase):
     class Config:
         orm_mode = True
 
+
 class RequestCommentInDBBase(RequestCommentBase):
     id: int
     request_id: int
@@ -118,6 +136,7 @@ class RequestCommentInDBBase(RequestCommentBase):
     class Config:
         orm_mode = True
 
+
 class RequestHistoryInDBBase(RequestHistoryBase):
     id: int
     request_id: int
@@ -126,6 +145,7 @@ class RequestHistoryInDBBase(RequestHistoryBase):
 
     class Config:
         orm_mode = True
+
 
 class DepartmentRequestInDBBase(BaseModel):
     id: int
@@ -148,6 +168,7 @@ class DepartmentRequestInDBBase(BaseModel):
     class Config:
         orm_mode = True
 
+
 # Full schemas with relationships
 class UserBase(BaseModel):
     id: int
@@ -158,6 +179,7 @@ class UserBase(BaseModel):
     class Config:
         orm_mode = True
 
+
 class DepartmentBase(BaseModel):
     id: int
     name: str
@@ -165,14 +187,18 @@ class DepartmentBase(BaseModel):
     class Config:
         orm_mode = True
 
+
 class RequestAttachment(RequestAttachmentInDBBase):
     user: UserBase
+
 
 class RequestComment(RequestCommentInDBBase):
     user: UserBase
 
+
 class RequestHistory(RequestHistoryInDBBase):
     user: UserBase
+
 
 class DepartmentRequest(DepartmentRequestInDBBase):
     requester: UserBase
@@ -182,10 +208,12 @@ class DepartmentRequest(DepartmentRequestInDBBase):
     attachments: List[RequestAttachment] = []
     history: List[RequestHistory] = []
 
+
 # Response schemas
 class DepartmentRequestResponse(BaseModel):
     success: bool = True
     data: DepartmentRequest
+
 
 class DepartmentRequestListResponse(BaseModel):
     success: bool = True

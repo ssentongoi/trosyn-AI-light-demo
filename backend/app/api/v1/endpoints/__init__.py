@@ -1,5 +1,5 @@
 # API v1 endpoints package initialization
-from . import auth, testing, roles, memory
+from . import auth, memory, roles, testing
 
 # List of all endpoint routers
 routers = [

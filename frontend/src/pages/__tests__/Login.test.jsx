@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import '@testing-library/vi-dom';
 import Login from '../Login';
 import AppContext from '../../contexts/AppContext';
+import { vi } from 'vitest';
 
 // Mock react-router-dom's useNavigate
 const mockNavigate = vi.fn();

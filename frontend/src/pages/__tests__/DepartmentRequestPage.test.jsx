@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import DepartmentRequestPage from '../DepartmentRequestPage';
 import { MemoryRouter } from 'react-router-dom';
+import { vi } from 'vitest';
 
 // Mock the child components to isolate the page component testing
 vi.mock('../../components/department/DepartmentRequestDialog', () => ({

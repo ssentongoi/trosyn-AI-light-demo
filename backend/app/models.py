@@ -1,16 +1,21 @@
-from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey, Table
-from sqlalchemy.orm import relationship
-from .database import Base
 from datetime import datetime
+
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Table
+from sqlalchemy.orm import relationship
 
 # Import role_permissions from permission.py
 from app.models.permission import role_permissions
 
+from .database import Base
+
 # Association tables
-user_roles = Table('user_roles', Base.metadata,
-    Column('user_id', Integer, ForeignKey('users.id')),
-    Column('role_id', Integer, ForeignKey('roles.id'))
+user_roles = Table(
+    "user_roles",
+    Base.metadata,
+    Column("user_id", Integer, ForeignKey("users.id")),
+    Column("role_id", Integer, ForeignKey("roles.id")),
 )
+
 
 class User(Base):
     __tablename__ = "users"
@@ -23,10 +28,11 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     # Relationships
     roles = relationship("Role", secondary=user_roles, back_populates="users")
     company = relationship("Company", back_populates="users")
+
 
 class Role(Base):
     __tablename__ = "roles"
@@ -34,10 +40,13 @@ class Role(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True)
     description = Column(String)
-    
+
     # Relationships
     users = relationship("User", secondary=user_roles, back_populates="roles")
-    permissions = relationship("Permission", secondary=role_permissions, back_populates="roles")
+    permissions = relationship(
+        "Permission", secondary=role_permissions, back_populates="roles"
+    )
+
 
 class Permission(Base):
     __tablename__ = "permissions"
@@ -45,11 +54,15 @@ class Permission(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True)
     description = Column(String)
-    
+
     # Relationships
-    roles = relationship("Role", secondary=role_permissions, back_populates="permissions")
+    roles = relationship(
+        "Role", secondary=role_permissions, back_populates="permissions"
+    )
+
 
 # role_permissions is imported at the top of the file
+
 
 class Company(Base):
     __tablename__ = "companies"
@@ -61,10 +74,11 @@ class Company(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     # Relationships
     users = relationship("User", back_populates="company")
     departments = relationship("Department", back_populates="company")
+
 
 class Department(Base):
     __tablename__ = "departments"
@@ -75,10 +89,11 @@ class Department(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     # Relationships
     company = relationship("Company", back_populates="departments")
     documents = relationship("Document", back_populates="department")
+
 
 class Document(Base):
     __tablename__ = "documents"
@@ -90,7 +105,7 @@ class Document(Base):
     created_by = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     # Relationships
     department = relationship("Department", back_populates="documents")
     author = relationship("User")

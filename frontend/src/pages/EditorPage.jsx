@@ -3,8 +3,8 @@ import EditorJS from '@editorjs/editorjs';
 import Header from '@editorjs/header';
 import List from '@editorjs/list';
 import { useSummarize } from '../hooks/useSummarize';
-import { useSpellcheck } from '../hooks/useSpellcheck';
 import { DocumentUploader } from '../components/DocumentUploader';
+import { useSpellcheck } from '../hooks/useSpellcheck';
 import { Box, Button, Typography, Paper, CircularProgress, Alert, Snackbar } from '@mui/material';
 
 const EDITOR_TOOLS = {
@@ -248,18 +248,5 @@ function SummarizeAndSpellcheckControls({ editorInstance, onError }) {
     </Box>
   );
 }
-
-export default EditorPage;
-      {spellcheckedText && (
-        <div style={{ marginTop: 12 }}>
-          <b>Spellchecked Text:</b>
-          <pre>{spellcheckedText}</pre>
-        </div>
-      )}
-    </div>
-  );
-}
-
-import { DocumentUploader } from '../components/DocumentUploader';
 
 export default EditorPage;

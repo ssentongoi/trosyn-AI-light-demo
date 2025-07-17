@@ -1,9 +1,9 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import authService from '../services/auth';
-import { notificationService } from '../services/notificationService';
+import notificationService from '../services/notificationService';
 import type { Notification, NotificationType, NotificationOptions } from '../types/notifications';
-import type { User, NotificationPreferences } from '../services/auth';
+import type { User, NotificationPreferences } from '../types/auth';
 
 // Types
 export interface Company {
@@ -39,6 +39,7 @@ type AppAction =
 
 interface AppContextType extends AppState {
   login: (email: string, password: string) => Promise<void>;
+  register: (fullName: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   clearError: () => void;
   loadUser: () => Promise<void>;
@@ -209,8 +210,33 @@ export const AppProvider: React.FC<AppProviderProps> = ({
     };
   }, [state.user]);
 
+  // Load companies
+  const loadCompanies = async () => {
+    try {
+      // Replace with actual API call
+      const companies: Company[] = [];
+      dispatch({ type: 'SET_COMPANIES', payload: companies });
+    } catch (error) {
+      console.error('Error loading companies:', error);
+    }
+  };
+
+  // Register user
+  const register = useCallback(async (fullName: string, email: string, password: string) => {
+    dispatch({ type: 'SET_LOADING', payload: true });
+    try {
+      const { user } = await authService.register(fullName, email, password);
+      dispatch({ type: 'LOGIN_SUCCESS', payload: { user } });
+      navigate('/dashboard'); // Redirect to dashboard after successful registration
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.detail || 'Registration failed';
+      dispatch({ type: 'LOGIN_FAILURE', payload: { error: errorMessage } });
+      throw error;
+    }
+  }, [navigate]);
+
   // Login user
-  const login = async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string) => {
     try {
       dispatch({ type: 'SET_LOADING', payload: true });
       const { user, token } = await authService.login(email, password);
@@ -231,10 +257,10 @@ export const AppProvider: React.FC<AppProviderProps> = ({
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
-  };
+  }, [dispatch, navigate, loadCompanies]);
 
   // Logout user
-  const logout = async () => {
+  const logout = async (): Promise<void> => {
     try {
       await authService.logout();
       localStorage.removeItem('token');
@@ -243,6 +269,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({
       navigate('/login');
     } catch (error) {
       console.error('Logout error:', error);
+      throw error;
     }
   };
 
@@ -254,17 +281,6 @@ export const AppProvider: React.FC<AppProviderProps> = ({
     } catch (error) {
       console.error('Error loading user:', error);
       dispatch({ type: 'SET_USER', payload: null });
-    }
-  };
-
-  // Load companies
-  const loadCompanies = async () => {
-    try {
-      // Replace with actual API call
-      const companies: Company[] = [];
-      dispatch({ type: 'SET_COMPANIES', payload: companies });
-    } catch (error) {
-      console.error('Error loading companies:', error);
     }
   };
 
@@ -309,6 +325,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({
     logout,
     clearError,
     loadUser,
+    register,
     loadCompanies,
     toggleTheme,
     toggleSidebar,

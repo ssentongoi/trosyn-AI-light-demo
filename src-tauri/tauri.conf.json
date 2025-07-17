@@ -4,10 +4,10 @@
   "version": "0.1.0",
   "identifier": "com.trosyn.ai",
   "build": {
-    "frontendDist": "../frontend/build",
-    "devUrl": "http://localhost:3001",
-    "beforeDevCommand": "cd ../frontend && npm run start",
-    "beforeBuildCommand": "cd ../frontend && npm run build"
+    "frontendDist": "frontend/build",
+    "devUrl": "http://localhost:3000",
+    "beforeDevCommand": "npm run start --prefix frontend",
+    "beforeBuildCommand": "npm run build --prefix frontend"
   },
   "app": {
     "windows": [

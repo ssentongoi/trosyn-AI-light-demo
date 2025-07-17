@@ -19,7 +19,6 @@ import {
   Badge,
   Button,
   Chip,
-  useTheme,
   CircularProgress,
   Alert,
   Snackbar,
@@ -27,6 +26,7 @@ import {
   Tab,
   Skeleton
 } from '@mui/material';
+import { useTheme, Theme } from '@mui/material/styles';
 import {
   Notifications as NotificationsIcon,
   MoreVert as MoreVertIcon,
@@ -41,15 +41,47 @@ import {
   FilterList as FilterListIcon,
   Refresh as RefreshIcon
 } from '@mui/icons-material';
-import { formatDistanceToNow } from 'date-fns';
-import { useNotificationService } from '../services/notificationService';
+import { formatDistanceToNow } from 'date-fns/formatDistanceToNow';
+import notificationService from '../services/notificationService';
 import type { Notification as NotificationType } from '../types/notifications';
 
 type TabValue = 'all' | 'unread' | 'archived';
 
+// Helper function to safely map notification types to theme colors
+const getNotificationColor = (type: string, theme: Theme): string => {
+  type PaletteColorKey = keyof typeof theme.palette;
+  type ColorKey = 'primary' | 'secondary' | 'error' | 'warning' | 'info' | 'success';
+  
+  const colorMap: Record<string, ColorKey> = {
+    'success': 'success',
+    'error': 'error',
+    'warning': 'warning',
+    'info': 'info',
+    'default': 'primary',
+  };
+
+  const colorKey = colorMap[type] || 'primary';
+  return (theme.palette[colorKey] as { main: string }).main;
+};
+
+// Helper function to safely map notification types to Chip component color prop
+const getChipColor = (type: string): 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning' => {
+  const colorMap: Record<string, 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning'> = {
+    'success': 'success',
+    'error': 'error',
+    'warning': 'warning',
+    'info': 'info',
+    'document_update': 'info',
+    'new_mention': 'secondary',
+    'system_alert': 'warning',
+    'task_assigned': 'primary'
+  };
+  
+  return colorMap[type] || 'default';
+};
+
 const NotificationsPage: React.FC = () => {
   const theme = useTheme();
-  const notificationService = useNotificationService();
   const [notifications, setNotifications] = useState<NotificationType[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -82,7 +114,7 @@ const NotificationsPage: React.FC = () => {
     loadNotifications();
     
     // Subscribe to notification updates
-    const unsubscribe = notificationService.subscribe((updatedNotifications) => {
+    const unsubscribe = notificationService.subscribe((updatedNotifications: NotificationType[]) => {
       setNotifications(updatedNotifications);
     });
     
@@ -124,7 +156,7 @@ const NotificationsPage: React.FC = () => {
 
   // Archive notification
   const handleArchive = (id: string) => {
-    // Implementation depends on your archiving logic
+    notificationService.archive(id);
     showSnackbar('Notification archived', 'success');
     handleMenuClose();
   };
@@ -253,7 +285,7 @@ const NotificationsPage: React.FC = () => {
                     alignItems="flex-start"
                     sx={{
                       bgcolor: notification.read ? 'background.paper' : 'action.hover',
-                      borderLeft: `4px solid ${theme.palette[notification.type as keyof typeof theme.palette]?.main || theme.palette.primary.main}`,
+                      borderLeft: `4px solid ${getNotificationColor(notification.type, theme)}`,
                       mb: 1,
                       borderRadius: 1,
                       transition: 'all 0.2s',
@@ -291,7 +323,7 @@ const NotificationsPage: React.FC = () => {
                           <Chip 
                             label={notification.type}
                             size="small"
-                            color={notification.type as any}
+                            color={getChipColor(notification.type)}
                             variant="outlined"
                           />
                         </Box>
@@ -312,7 +344,7 @@ const NotificationsPage: React.FC = () => {
                             color="text.secondary"
                             display="block"
                           >
-                            {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
+                            {formatDistanceToNow(new Date(notification.timestamp), { addSuffix: true })}
                           </Typography>
                         </>
                       }

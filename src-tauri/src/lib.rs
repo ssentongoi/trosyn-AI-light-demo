@@ -1,4 +1,4 @@
-use tauri::Manager;
+
 use crate::commands::filesystem::{check_file_exists, open_dialog, read_file};
 
 mod commands;
@@ -19,6 +19,7 @@ pub fn run() {
       }
       Ok(())
     })
+    .plugin(tauri_plugin_dialog::init())
     .invoke_handler(tauri::generate_handler![
       check_file_exists,
       open_dialog,

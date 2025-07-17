@@ -68,9 +68,9 @@ export const useWebSocket = (url: string, options: WebSocketOptions = {}) => {
 
   const ws = useRef<WebSocket | null>(null);
   const messageHandlers = useRef<Map<string, Set<MessageHandler>>>(new Map());
-  const reconnectTimeoutRef = useRef<number>();
-  const heartbeatIntervalRef = useRef<number>();
-  const connectionTimeoutRef = useRef<number>();
+  const reconnectTimeoutRef = useRef<number | undefined>(undefined);
+  const heartbeatIntervalRef = useRef<number | undefined>(undefined);
+  const connectionTimeoutRef = useRef<number | undefined>(undefined);
   const lastMessageTime = useRef<number>(Date.now());
   const reconnectAttemptsRef = useRef(0);
   const isMounted = useRef(true);
@@ -155,6 +155,65 @@ export const useWebSocket = (url: string, options: WebSocketOptions = {}) => {
       }
     }
   }, [autoReconnect, getReconnectDelay, maxReconnectAttempts, onDisconnect, onReconnectFailed, updateState]);
+  
+  // Handle incoming messages
+  const handleMessage = useCallback((event: MessageEvent) => {
+    try {
+      const message = JSON.parse(event.data) as AnyWebSocketMessage;
+      lastMessageTime.current = Date.now();
+      
+      // Update last message in state
+      updateState({ lastMessage: message });
+      
+      // Call specific handlers for the message type
+      const handlers = messageHandlers.current.get(message.type) || [];
+      handlers.forEach(handler => handler(message));
+      
+      // Call wildcard handlers
+      const wildcardHandlers = messageHandlers.current.get('*') || [];
+      wildcardHandlers.forEach(handler => handler(message));
+      
+      // Special handling for ping messages
+      if (message.type === 'ping') {
+        // Send a properly typed pong message
+        const pongMessage: WebSocketMessage<any> = {
+          id: `pong-${Date.now()}`,
+          type: 'pong',
+          timestamp: new Date().toISOString(),
+          payload: {}
+        };
+        if (ws.current?.readyState === WebSocket.OPEN) {
+          ws.current.send(JSON.stringify(pongMessage));
+        }
+      }
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error : new Error(String(error));
+      console.error('Error processing WebSocket message:', errorMessage);
+      updateState({ lastError: errorMessage });
+    }
+  }, [updateState]);
+
+  // Send a message through the WebSocket
+  const sendMessage = useCallback(<T = any>(message: WebSocketMessage<T>): boolean => {
+    if (!ws.current) {
+      console.warn('WebSocket is not initialized');
+      return false;
+    }
+    
+    if (ws.current.readyState === WebSocket.OPEN) {
+      try {
+        ws.current.send(JSON.stringify(message));
+        return true;
+      } catch (error) {
+        console.error('Error sending WebSocket message:', error);
+        updateState({ lastError: error instanceof Error ? error : new Error(String(error)) });
+        return false;
+      }
+    }
+    
+    console.warn('WebSocket is not connected');
+    return false;
+  }, [updateState]);
   
   // Handle WebSocket errors
   const handleError = useCallback((event: Event) => {
@@ -261,59 +320,6 @@ export const useWebSocket = (url: string, options: WebSocketOptions = {}) => {
     }
     
     return () => {
-      isMounted.current = false;
-      cleanup();
-    };
-  }, [autoConnect, connect, isAuthenticated, cleanup]);
-  
-  // Handle incoming messages
-  const handleMessage = useCallback((event: MessageEvent) => {
-    try {
-      const message = JSON.parse(event.data) as AnyWebSocketMessage;
-      lastMessageTime.current = Date.now();
-      
-      // Update last message in state
-      updateState({ lastMessage: message });
-      
-      // Call specific handlers for the message type
-      const handlers = messageHandlers.current.get(message.type);
-      if (handlers) {
-        handlers.forEach(handler => handler(message));
-      }
-      
-      // Call wildcard handlers
-      const wildcardHandlers = messageHandlers.current.get('*');
-      if (wildcardHandlers) {
-        wildcardHandlers.forEach(handler => handler(message));
-      }
-    } catch (error) {
-      console.error('Error processing WebSocket message:', error);
-      updateState({ 
-        lastError: error instanceof Error ? error : new Error('Invalid message format') 
-      });
-    }
-      // Call all handlers for this message type
-      const handlers = messageHandlers.current.get(message.type) || [];
-      handlers.forEach(handler => handler(message));
-      
-      // Also call the wildcard handler if it exists
-      const wildcardHandlers = messageHandlers.current.get('*') || [];
-      wildcardHandlers.forEach(handler => handler(message));
-      
-      // Special handling for ping messages
-      if (message.type === 'ping') {
-        sendMessage({ type: 'pong' });
-      }
-    } catch (error) {
-      console.error('Error processing WebSocket message:', error);
-      setLastError(error instanceof Error ? error : new Error(String(error)));
-    }
-  }, []);
-
-  // Send a message through the WebSocket
-  const sendMessage = useCallback(<T = any>(message: WebSocketMessage<T>): boolean => {
-    if (!ws.current) {
-      console.warn('WebSocket is not initialized');
       return false;
     }
     
@@ -355,7 +361,14 @@ export const useWebSocket = (url: string, options: WebSocketOptions = {}) => {
   // Send a heartbeat to the server
   const sendHeartbeat = useCallback(() => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      sendMessage({ type: 'heartbeat' });
+      // Create a properly typed heartbeat message
+      const heartbeatMessage: WebSocketMessage = {
+        id: `heartbeat-${Date.now()}`,
+        type: 'heartbeat',
+        timestamp: new Date().toISOString(),
+        payload: {}
+      };
+      sendMessage(heartbeatMessage);
     }
   }, [sendMessage]);
 
@@ -365,16 +378,23 @@ export const useWebSocket = (url: string, options: WebSocketOptions = {}) => {
       const interval = setInterval(() => {
         const timeSinceLastMessage = Date.now() - lastMessageTime.current;
         if (timeSinceLastMessage >= heartbeatInterval) {
-          sendMessage({ type: 'heartbeat' });
+          // Create a properly typed heartbeat message
+          const heartbeatMessage: WebSocketMessage = {
+            id: `heartbeat-${Date.now()}`,
+            type: 'heartbeat',
+            timestamp: new Date().toISOString(),
+            payload: {}
+          };
+          sendMessage(heartbeatMessage);
         }
       }, Math.max(1000, Math.floor(heartbeatInterval / 2)));
       
       return () => clearInterval(interval);
     }
-  }, [isConnected, heartbeatInterval]);
+  }, [isConnected, heartbeatInterval, sendMessage]);
 
   // Handle reconnection logic
-  const reconnect = useCallback(() => {
+  const handleReconnect = useCallback(() => {
     if (!autoReconnect || !isMounted.current) return;
     
     const attempt = reconnectAttemptsRef.current + 1;
@@ -391,13 +411,13 @@ export const useWebSocket = (url: string, options: WebSocketOptions = {}) => {
       if (!isMounted.current) return;
       
       reconnectAttemptsRef.current = attempt;
-      setReconnectAttempts(attempt);
+      updateState({ reconnectAttempts: attempt });
       connect();
     }, delay);
-  }, [autoReconnect, maxReconnectAttempts, getReconnectDelay]);
+  }, [autoReconnect, maxReconnectAttempts, getReconnectDelay, connect]);
 
   // Cleanup WebSocket connection
-  const cleanup = useCallback((closeCode = 1000, reason?: string) => {
+  const cleanupConnection = useCallback((closeCode = 1000, reason?: string) => {
     if (ws.current) {
       ws.current.onopen = null;
       ws.current.onclose = null;
@@ -425,20 +445,21 @@ export const useWebSocket = (url: string, options: WebSocketOptions = {}) => {
     
     setIsConnected(false);
     setIsConnecting(false);
+    updateState({ isConnected: false, isConnecting: false });
   }, []);
 
   // Main WebSocket connection logic
   const connect = useCallback(() => {
     if (!isMounted.current) return;
     
-    cleanup(1000, 'Reconnecting...');
+    cleanupConnection(1000, 'Reconnecting...');
     
     if (!isAuthenticated || !token) {
       console.log('Not authenticated, skipping WebSocket connection');
       return;
     }
     
-    setIsConnecting(true);
+    updateState({ isConnecting: true });
     
     try {
       const wsUrl = new URL(url);
@@ -457,7 +478,7 @@ export const useWebSocket = (url: string, options: WebSocketOptions = {}) => {
         
         // Reset reconnect attempts on successful connection
         reconnectAttemptsRef.current = 0;
-        setReconnectAttempts(0);
+        updateState({ reconnectAttempts: 0 });
       };
       
       ws.current.onmessage = (event) => {
@@ -472,11 +493,10 @@ export const useWebSocket = (url: string, options: WebSocketOptions = {}) => {
         
         // Don't attempt to reconnect if we explicitly closed the connection
         if (event.code !== 1000 && autoReconnect) {
-          reconnect();
+          handleReconnect();
         }
         
-        setIsConnected(false);
-        setIsConnecting(false);
+        updateState({ isConnected: false, isConnecting: false });
         
         if (onDisconnect) {
           onDisconnect(event);
@@ -487,7 +507,7 @@ export const useWebSocket = (url: string, options: WebSocketOptions = {}) => {
         if (!isMounted.current) return;
         
         console.error('WebSocket error:', error);
-        setLastError(new Error('WebSocket connection error'));
+        updateState({ lastError: new Error('WebSocket connection error') });
         
         if (onError) {
           onError(error);
@@ -511,8 +531,8 @@ export const useWebSocket = (url: string, options: WebSocketOptions = {}) => {
     token, 
     isAuthenticated, 
     handleMessage, 
-    reconnect, 
-    cleanup, 
+    handleReconnect, 
+    cleanupConnection, 
     sendMessage, 
     autoReconnect,
     onDisconnect,
@@ -527,9 +547,9 @@ export const useWebSocket = (url: string, options: WebSocketOptions = {}) => {
     
     return () => {
       isMounted.current = false;
-      cleanup(1000, 'Component unmounted');
+      cleanupConnection(1000, 'Component unmounted');
     };
-  }, [connect, cleanup, autoConnect]);
+  }, [connect, cleanupConnection, autoConnect]);
 
   // Reconnect when token changes and we're authenticated
   useEffect(() => {
@@ -542,11 +562,12 @@ export const useWebSocket = (url: string, options: WebSocketOptions = {}) => {
   useEffect(() => {
     if (!isAuthenticated && ws.current) {
       // Close connection if user logs out
-      cleanup(1000, 'User logged out');
+      cleanupConnection(1000, 'User logged out');
     }
-  }, [isAuthenticated, cleanup]);
+  }, [isAuthenticated, cleanupConnection]);
 
-  return {
+  // Define the return type for better type safety
+  const result = {
     isConnected,
     isConnecting,
     lastError,
@@ -556,13 +577,15 @@ export const useWebSocket = (url: string, options: WebSocketOptions = {}) => {
       if (!isMounted.current) return;
       
       reconnectAttemptsRef.current = 0;
-      setReconnectAttempts(0);
+      updateState({ reconnectAttempts: 0, lastError: null });
       connect();
-    }, [connect]),
+    }, [connect, updateState]),
     disconnect: useCallback(() => {
-      cleanup(1000, 'Disconnected by user');
-    }, [cleanup]),
+      cleanupConnection(1000, 'Disconnected by user');
+    }, [cleanupConnection])
   };
+  
+  return result;
 };
 
 export default useWebSocket;

@@ -1,13 +1,13 @@
 import pytest
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.main import app
-from app.db.base import Base
-from app.database import get_db
-from app.models.user import User
 from app.core.security import create_access_token
+from app.database import get_db
+from app.db.base import Base
+from app.main import app
+from app.models.user import User
 
 # Use an in-memory SQLite database for testing to ensure isolation
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
@@ -15,31 +15,36 @@ TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 engine = create_async_engine(TEST_DATABASE_URL, echo=False)
 TestingSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
+
 # This dependency override ensures that the application uses the test database session
 # for the duration of the test.
 async def override_get_db() -> AsyncSession:
     async with TestingSessionLocal() as session:
         yield session
 
+
 app.dependency_overrides[get_db] = override_get_db
+
 
 @pytest.fixture(scope="function")
 async def async_client() -> AsyncClient:
     """Pytest fixture to set up the database and provide an async test client."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
+
     async with AsyncClient(app=app, base_url="http://test") as client:
         yield client
-        
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
+
 
 @pytest.fixture(scope="function")
 async def db_session() -> AsyncSession:
     """Pytest fixture to provide a database session for test setup."""
     async with TestingSessionLocal() as session:
         yield session
+
 
 @pytest.mark.asyncio
 async def test_llm_chat(async_client: AsyncClient, db_session: AsyncSession):
@@ -50,7 +55,7 @@ async def test_llm_chat(async_client: AsyncClient, db_session: AsyncSession):
         username="testuser",
         hashed_password="not-a-real-password",
         is_active=True,
-        is_superuser=False
+        is_superuser=False,
     )
     db_session.add(test_user)
     await db_session.commit()
@@ -64,11 +69,13 @@ async def test_llm_chat(async_client: AsyncClient, db_session: AsyncSession):
     response = await async_client.post(
         "/api/v1/chat/chat",
         headers=headers,
-        json={"message": "Hello, LLM!", "stream": False}
+        json={"message": "Hello, LLM!", "stream": False},
     )
 
     # 4. Assert: Verify the response is successful and contains the expected data
-    assert response.status_code == 200, f"Expected 200 OK, got {response.status_code}: {response.text}"
+    assert (
+        response.status_code == 200
+    ), f"Expected 200 OK, got {response.status_code}: {response.text}"
     response_data = response.json()
     assert "response" in response_data
     assert isinstance(response_data["response"], str)

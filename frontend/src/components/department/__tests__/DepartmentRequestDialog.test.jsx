@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import DepartmentRequestDialog from '../DepartmentRequestDialog';
+import { vi } from 'vitest';
 
 // Mock data for testing
 const mockRequest = {

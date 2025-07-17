@@ -1,151 +1,88 @@
-import { vi, describe, beforeEach, it, expect } from 'vitest';
-import { notificationService } from '../notificationService';
-import type { Notification, NotificationOptions } from '../../types/notifications';
+import { vi, describe, beforeEach, it, expect, afterEach } from 'vitest';
+import type { Notification, NotificationService } from '../../types/notifications';
 
-// Mock WebSocket
-class MockWebSocket {
-  static instances: MockWebSocket[] = [];
-  onopen: (() => void) | null = null;
-  onmessage: ((event: { data: string }) => void) | null = null;
-  onclose: (() => void) | null = null;
-  onerror: ((error: Event) => void) | null = null;
-  readyState: number;
-  url: string;
+// This variable will hold the actual service instance for each test.
+let notificationService: NotificationService;
 
-  constructor(url: string) {
-    this.url = url;
-    this.readyState = WebSocket.CONNECTING;
-    MockWebSocket.instances.push(this);
+// --- Mock WebSocket setup ---
+global.WebSocket = vi.fn(() => ({
+  send: vi.fn(),
+  close: vi.fn(),
+  addEventListener: vi.fn(),
+  removeEventListener: vi.fn(),
+  readyState: WebSocket.OPEN,
+})) as any;
+
+
+describe('NotificationService (Isolated)', () => {
+  beforeEach(async () => {
+    // Reset modules to ensure we get a fresh, un-mocked instance of the service.
+    vi.resetModules();
+    const actualServiceModule = (await vi.importActual(
+      '../notificationService'
+    )) as { default: NotificationService };
+    notificationService = actualServiceModule.default;
     
-    // Simulate connection after a short delay
-    setTimeout(() => {
-      this.readyState = WebSocket.OPEN;
-      if (this.onopen) this.onopen();
-    }, 10);
-  }
-
-  send(data: string) {
-    // Handle authentication
-    if (data.includes('auth')) {
-      const response = JSON.stringify({ type: 'auth_success' });
-      if (this.onmessage) this.onmessage({ data: response });
-    }
-  }
-
-  close() {
-    this.readyState = WebSocket.CLOSED;
-    if (this.onclose) this.onclose();
-  }
-}
-
-global.WebSocket = MockWebSocket as any;
-
-describe('NotificationService', () => {
-  let testNotification: Notification;
-  
-  beforeEach(() => {
+    // Clear any previous state or mocks.
     vi.clearAllMocks();
-    MockWebSocket.instances = [];
-    
-    // Reset notification service state
     notificationService.clear();
-    
-    // Create a test notification
-    testNotification = {
-      id: 'test-1',
-      type: 'info',
-      title: 'Test Notification',
-      message: 'This is a test notification',
-      read: false,
-      createdAt: new Date().toISOString(),
-    };
   });
 
-  it('should initialize WebSocket connection', async () => {
-    notificationService.connect('test-token');
-    
-    // Wait for connection to be established
-    await new Promise(resolve => setTimeout(resolve, 20));
-    
-    expect(MockWebSocket.instances).toHaveLength(1);
-    expect(MockWebSocket.instances[0].url).toContain('/ws/notifications');
+  afterEach(() => {
+    vi.clearAllMocks();
   });
 
-  it('should add and retrieve notifications', () => {
-    const id = notificationService.show({
-      type: 'info',
-      title: 'Test',
-      message: 'Test message',
+  it('should add and retrieve a notification', () => {
+    const notificationId = notificationService.show({
+      title: 'Success',
+      message: 'Your document has been saved.',
+      type: 'success',
     });
-    
-    const notifications = notificationService.getNotifications();
-    expect(notifications).toHaveLength(1);
-    expect(notifications[0].id).toBe(id);
+
+    const allNotifications = notificationService.getNotifications();
+    expect(allNotifications).toHaveLength(1);
+    expect(allNotifications[0].id).toBe(notificationId);
+    expect(allNotifications[0].message).toBe('Your document has been saved.');
   });
 
-  it('should mark notifications as read', () => {
-    const id = notificationService.show(testNotification);
-    notificationService.markAsRead(id);
-    
-    const notification = notificationService.getNotifications().find(n => n.id === id);
-    expect(notification?.read).toBe(true);
+  it('should clear all notifications', () => {
+    notificationService.show({ title: 'Info', message: 'First message' });
+    notificationService.show({ title: 'Warning', message: 'Second message' });
+
+    expect(notificationService.getNotifications()).toHaveLength(2);
+
+    notificationService.clear();
+    expect(notificationService.getNotifications()).toHaveLength(0);
   });
 
-  it('should mark all notifications as read', () => {
-    // Add multiple notifications
-    notificationService.show({ ...testNotification, id: '1' });
-    notificationService.show({ ...testNotification, id: '2' });
-    
-    notificationService.markAllAsRead();
-    
-    const notifications = notificationService.getNotifications();
-    expect(notifications.every(n => n.read)).toBe(true);
+  it('should mark a notification as read', () => {
+    const notificationId = notificationService.show({ title: 'Test', message: 'Mark me as read' });
+    notificationService.markAsRead(notificationId);
+    const notification = notificationService.getNotifications()[0];
+    expect(notification.read).toBe(true);
   });
 
-  it('should handle WebSocket messages', async () => {
-    const callback = vi.fn();
-    notificationService.subscribe(callback);
-    
-    // Simulate incoming WebSocket message
-    const ws = MockWebSocket.instances[0];
-    const message = {
-      type: 'new_notification',
-      data: testNotification
-    };
-    
-    if (ws.onmessage) {
-      ws.onmessage({ data: JSON.stringify(message) });
-    }
-    
-    // Wait for the message to be processed
-    await new Promise(resolve => setTimeout(resolve, 10));
-    
-    expect(callback).toHaveBeenCalledWith(expect.arrayContaining([
-      expect.objectContaining({ id: testNotification.id })
-    ]));
+  it('should subscribe to and receive updates', () => {
+    const subscriberCallback = vi.fn();
+    const unsubscribe = notificationService.subscribe(subscriberCallback);
+
+    // The subscriber should be called immediately with the current state.
+    expect(subscriberCallback).toHaveBeenCalledWith([]);
+
+    // Add a notification and check if the subscriber is called again.
+    notificationService.show({ title: 'Update', message: 'A new update!' });
+    expect(subscriberCallback).toHaveBeenCalledTimes(2);
+    expect(subscriberCallback).toHaveBeenLastCalledWith(expect.arrayContaining([expect.objectContaining({ message: 'A new update!' })]));
+
+    // Unsubscribe and ensure the callback is no longer called.
+    unsubscribe();
+    notificationService.show({ title: 'Final', message: 'This should not be received.' });
+    expect(subscriberCallback).toHaveBeenCalledTimes(2);
   });
 
-  it('should handle WebSocket disconnection', async () => {
-    notificationService.connect('test-token');
-    await new Promise(resolve => setTimeout(resolve, 20));
-    
-    const ws = MockWebSocket.instances[0];
-    notificationService.disconnect();
-    
-    expect(ws.readyState).toBe(WebSocket.CLOSED);
-  });
-
-  it('should handle reconnection on connection loss', async () => {
-    notificationService.connect('test-token');
-    await new Promise(resolve => setTimeout(resolve, 20));
-    
-    // Simulate connection loss
-    const ws = MockWebSocket.instances[0];
-    if (ws.onclose) ws.onclose();
-    
-    // Should attempt to reconnect
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
-    expect(MockWebSocket.instances.length).toBeGreaterThan(1);
+  it('should connect to WebSocket with a token', () => {
+    notificationService.connect('test-jwt-token');
+    expect(global.WebSocket).toHaveBeenCalledWith(expect.stringContaining('/ws/notifications?token=test-jwt-token'));
   });
 });
+

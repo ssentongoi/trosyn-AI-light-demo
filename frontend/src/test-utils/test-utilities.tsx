@@ -1,8 +1,8 @@
-import { ReactElement } from 'react';
-import { render, RenderOptions } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import React, { ReactElement, ReactNode } from 'react';
+import { render, RenderOptions, RenderResult } from '@testing-library/react';
+import { QueryClient, QueryClientProvider, QueryCache } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
+import { ThemeProvider, createTheme, Theme } from '@mui/material/styles';
 import { vi } from 'vitest';
 import { Notification, NotificationType } from '../types/notifications';
 
@@ -34,25 +34,32 @@ export const createTestNotification = (overrides: Partial<Notification> = {}): N
     title: 'Test Notification',
     message: 'This is a test notification',
     type: 'info' as NotificationType,
-    createdAt: now,
+    timestamp: now.toISOString(),
     read: false,
+    archived: false, // Ensure archived has a default value
     ...overrides,
   };
 };
 
+// Type for the wrapper component props
+interface AllTheProvidersProps {
+  children: ReactNode;
+}
+
 // Create a custom render function that includes providers
-const AllTheProviders = ({ children }: { children: React.ReactNode }) => {
+const AllTheProviders: React.FC<AllTheProvidersProps> = ({ children }) => {
   const queryClient = new QueryClient({
+    queryCache: new QueryCache(),
     defaultOptions: {
       queries: {
         retry: false,
-        gcTime: 0, // Using gcTime instead of cacheTime in newer versions
+        cacheTime: 0,
         staleTime: 0,
       },
     },
   });
 
-  const theme = createTheme();
+  const theme: Theme = createTheme();
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -65,8 +72,20 @@ const AllTheProviders = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-const customRender = (ui: ReactElement, options?: Omit<RenderOptions, 'wrapper'>) =>
-  render(ui, { wrapper: AllTheProviders, ...options });
+// Custom render function with all the providers
+const customRender = (
+  ui: ReactElement,
+  options?: Omit<RenderOptions, 'wrapper'>
+): RenderResult => {
+  const Wrapper: React.FC<{ children: ReactNode }> = ({ children }) => (
+    <AllTheProviders>{children}</AllTheProviders>
+  );
+  
+  return render(ui, { 
+    wrapper: Wrapper as React.ComponentType,
+    ...options 
+  });
+};
 
 // Helper function to wait for async operations
 export const waitForAsync = (ms: number = 0) => 

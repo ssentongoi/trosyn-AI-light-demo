@@ -1,16 +1,23 @@
-from typing import List, Optional
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Query, Path, status
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
 from app.core.security import get_current_active_user
+from app.database import get_db
 from app.models.user import User
 from app.schemas.memory import (
-    MemoryInteractionCreate, MemoryInteractionUpdate, MemoryInteractionInDB,
-    MemoryContextCreate, MemoryContextUpdate, MemoryContextInDB,
-    MemorySessionCreate, MemorySessionUpdate, MemorySessionInDB,
-    MemoryStats
+    MemoryContextCreate,
+    MemoryContextInDB,
+    MemoryContextUpdate,
+    MemoryInteractionCreate,
+    MemoryInteractionInDB,
+    MemoryInteractionUpdate,
+    MemorySessionCreate,
+    MemorySessionInDB,
+    MemorySessionUpdate,
+    MemoryStats,
 )
 from app.services.memory_service import MemoryService
 
@@ -18,21 +25,22 @@ router = APIRouter()
 
 
 # Memory Interactions endpoints
-@router.post("/interactions", response_model=MemoryInteractionInDB, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/interactions",
+    response_model=MemoryInteractionInDB,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_memory_interaction(
     interaction: MemoryInteractionCreate,
     session_id: Optional[str] = None,
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Create a new memory interaction.
     """
     return await MemoryService.create_interaction(
-        db=db, 
-        user_id=current_user.id, 
-        interaction=interaction,
-        session_id=session_id
+        db=db, user_id=current_user.id, interaction=interaction, session_id=session_id
     )
 
 
@@ -40,26 +48,27 @@ async def create_memory_interaction(
 async def get_memory_interaction(
     interaction_id: str = Path(..., title="The ID of the memory interaction to get"),
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get a specific memory interaction by ID.
     """
-    interaction = await MemoryService.get_interaction(db=db, interaction_id=interaction_id)
-    
+    interaction = await MemoryService.get_interaction(
+        db=db, interaction_id=interaction_id
+    )
+
     if not interaction:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Memory interaction not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Memory interaction not found"
         )
-        
+
     # Check if user has access to this interaction
     if interaction.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to access this memory interaction"
+            detail="Not authorized to access this memory interaction",
         )
-        
+
     return interaction
 
 
@@ -74,7 +83,7 @@ async def get_user_memory_interactions(
     end_date: Optional[datetime] = None,
     include_private: bool = True,
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get all memory interactions for the current user with filtering options.
@@ -89,7 +98,7 @@ async def get_user_memory_interactions(
         search_query=search_query,
         start_date=start_date,
         end_date=end_date,
-        include_private=include_private
+        include_private=include_private,
     )
 
 
@@ -98,32 +107,31 @@ async def update_memory_interaction(
     interaction_id: str = Path(..., title="The ID of the memory interaction to update"),
     update_data: MemoryInteractionUpdate = None,
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Update a memory interaction.
     """
     # First check if interaction exists and belongs to user
-    interaction = await MemoryService.get_interaction(db=db, interaction_id=interaction_id)
-    
+    interaction = await MemoryService.get_interaction(
+        db=db, interaction_id=interaction_id
+    )
+
     if not interaction:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Memory interaction not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Memory interaction not found"
         )
-        
+
     if interaction.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to update this memory interaction"
+            detail="Not authorized to update this memory interaction",
         )
-    
+
     updated_interaction = await MemoryService.update_interaction(
-        db=db,
-        interaction_id=interaction_id,
-        update_data=update_data
+        db=db, interaction_id=interaction_id, update_data=update_data
     )
-    
+
     return updated_interaction
 
 
@@ -131,49 +139,52 @@ async def update_memory_interaction(
 async def delete_memory_interaction(
     interaction_id: str = Path(..., title="The ID of the memory interaction to delete"),
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Delete a memory interaction.
     """
     # First check if interaction exists and belongs to user
-    interaction = await MemoryService.get_interaction(db=db, interaction_id=interaction_id)
-    
+    interaction = await MemoryService.get_interaction(
+        db=db, interaction_id=interaction_id
+    )
+
     if not interaction:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Memory interaction not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Memory interaction not found"
         )
-        
+
     if interaction.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to delete this memory interaction"
+            detail="Not authorized to delete this memory interaction",
         )
-    
-    success = await MemoryService.delete_interaction(db=db, interaction_id=interaction_id)
-    
+
+    success = await MemoryService.delete_interaction(
+        db=db, interaction_id=interaction_id
+    )
+
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete memory interaction"
+            detail="Failed to delete memory interaction",
         )
 
 
 # Memory Context endpoints
-@router.post("/contexts", response_model=MemoryContextInDB, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/contexts", response_model=MemoryContextInDB, status_code=status.HTTP_201_CREATED
+)
 async def create_memory_context(
     context: MemoryContextCreate,
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Create a new memory context.
     """
     return await MemoryService.create_context(
-        db=db, 
-        user_id=current_user.id, 
-        context=context
+        db=db, user_id=current_user.id, context=context
     )
 
 
@@ -181,26 +192,25 @@ async def create_memory_context(
 async def get_memory_context(
     context_id: str = Path(..., title="The ID of the memory context to get"),
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get a specific memory context by ID.
     """
     context = await MemoryService.get_context(db=db, context_id=context_id)
-    
+
     if not context:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Memory context not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Memory context not found"
         )
-        
+
     # Check if user has access to this context
     if context.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to access this memory context"
+            detail="Not authorized to access this memory context",
         )
-        
+
     return context
 
 
@@ -211,7 +221,7 @@ async def get_user_memory_contexts(
     search_query: Optional[str] = None,
     include_private: bool = True,
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get all memory contexts for the current user with filtering options.
@@ -222,7 +232,7 @@ async def get_user_memory_contexts(
         skip=skip,
         limit=limit,
         search_query=search_query,
-        include_private=include_private
+        include_private=include_private,
     )
 
 
@@ -231,32 +241,29 @@ async def update_memory_context(
     context_id: str = Path(..., title="The ID of the memory context to update"),
     update_data: MemoryContextUpdate = None,
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Update a memory context.
     """
     # First check if context exists and belongs to user
     context = await MemoryService.get_context(db=db, context_id=context_id)
-    
+
     if not context:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Memory context not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Memory context not found"
         )
-        
+
     if context.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to update this memory context"
+            detail="Not authorized to update this memory context",
         )
-    
+
     updated_context = await MemoryService.update_context(
-        db=db,
-        context_id=context_id,
-        update_data=update_data
+        db=db, context_id=context_id, update_data=update_data
     )
-    
+
     return updated_context
 
 
@@ -264,49 +271,48 @@ async def update_memory_context(
 async def delete_memory_context(
     context_id: str = Path(..., title="The ID of the memory context to delete"),
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Delete a memory context.
     """
     # First check if context exists and belongs to user
     context = await MemoryService.get_context(db=db, context_id=context_id)
-    
+
     if not context:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Memory context not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Memory context not found"
         )
-        
+
     if context.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to delete this memory context"
+            detail="Not authorized to delete this memory context",
         )
-    
+
     success = await MemoryService.delete_context(db=db, context_id=context_id)
-    
+
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete memory context"
+            detail="Failed to delete memory context",
         )
 
 
 # Memory Session endpoints
-@router.post("/sessions", response_model=MemorySessionInDB, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/sessions", response_model=MemorySessionInDB, status_code=status.HTTP_201_CREATED
+)
 async def create_memory_session(
     session: MemorySessionCreate,
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Create a new memory session.
     """
     return await MemoryService.create_session(
-        db=db, 
-        user_id=current_user.id, 
-        session=session
+        db=db, user_id=current_user.id, session=session
     )
 
 
@@ -314,26 +320,25 @@ async def create_memory_session(
 async def get_memory_session(
     session_id: str = Path(..., title="The ID of the memory session to get"),
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get a specific memory session by ID.
     """
     session = await MemoryService.get_session(db=db, session_id=session_id)
-    
+
     if not session:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Memory session not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Memory session not found"
         )
-        
+
     # Check if user has access to this session
     if session.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to access this memory session"
+            detail="Not authorized to access this memory session",
         )
-        
+
     return session
 
 
@@ -347,7 +352,7 @@ async def get_user_memory_sessions(
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get all memory sessions for the current user with filtering options.
@@ -361,7 +366,7 @@ async def get_user_memory_sessions(
         search_query=search_query,
         tag_filter=tag_filter,
         start_date=start_date,
-        end_date=end_date
+        end_date=end_date,
     )
 
 
@@ -370,32 +375,29 @@ async def update_memory_session(
     session_id: str = Path(..., title="The ID of the memory session to update"),
     update_data: MemorySessionUpdate = None,
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Update a memory session.
     """
     # First check if session exists and belongs to user
     session = await MemoryService.get_session(db=db, session_id=session_id)
-    
+
     if not session:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Memory session not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Memory session not found"
         )
-        
+
     if session.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to update this memory session"
+            detail="Not authorized to update this memory session",
         )
-    
+
     updated_session = await MemoryService.update_session(
-        db=db,
-        session_id=session_id,
-        update_data=update_data
+        db=db, session_id=session_id, update_data=update_data
     )
-    
+
     return updated_session
 
 
@@ -403,28 +405,27 @@ async def update_memory_session(
 async def end_memory_session(
     session_id: str = Path(..., title="The ID of the memory session to end"),
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
     End a memory session (set is_active to False and ended_at to current time).
     """
     # First check if session exists and belongs to user
     session = await MemoryService.get_session(db=db, session_id=session_id)
-    
+
     if not session:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Memory session not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Memory session not found"
         )
-        
+
     if session.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to end this memory session"
+            detail="Not authorized to end this memory session",
         )
-    
+
     ended_session = await MemoryService.end_session(db=db, session_id=session_id)
-    
+
     return ended_session
 
 
@@ -432,32 +433,31 @@ async def end_memory_session(
 async def delete_memory_session(
     session_id: str = Path(..., title="The ID of the memory session to delete"),
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Delete a memory session.
     """
     # First check if session exists and belongs to user
     session = await MemoryService.get_session(db=db, session_id=session_id)
-    
+
     if not session:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Memory session not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Memory session not found"
         )
-        
+
     if session.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to delete this memory session"
+            detail="Not authorized to delete this memory session",
         )
-    
+
     success = await MemoryService.delete_session(db=db, session_id=session_id)
-    
+
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete memory session"
+            detail="Failed to delete memory session",
         )
 
 
@@ -465,7 +465,7 @@ async def delete_memory_session(
 @router.get("/stats", response_model=MemoryStats)
 async def get_memory_statistics(
     current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get memory usage statistics for the current user.
