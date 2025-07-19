@@ -23,11 +23,13 @@ import {
   ListItem,
   ListItemText,
   ListItemSecondaryAction,
+  ListItemAvatar,
   IconButton,
   InputAdornment,
   LinearProgress,
   Alert,
-  Snackbar
+  Snackbar,
+  CircularProgress
 } from '@mui/material';
 import {
   AttachFile as AttachFileIcon,
@@ -38,8 +40,16 @@ import {
   Assignment as AssignmentIcon,
   Description as DescriptionIcon,
   Check as CheckIcon,
-  Clear as ClearIcon
+  Clear as ClearIcon,
+  Image as ImageIcon,
+  PictureAsPdf as PictureAsPdfIcon,
+  Article as ArticleIcon,
+  TableChart as TableChartIcon,
+  FolderZip as FolderZipIcon,
+  FlightTakeoff as FlightTakeoffIcon,
+  MoreHoriz as MoreHorizIcon
 } from '@mui/icons-material';
+import { format } from 'date-fns';
 
 const DepartmentRequestForm = ({ open, onClose, onSubmit, request }) => {
   const [formData, setFormData] = useState({

@@ -8,7 +8,7 @@ declare module '@tauri-apps/api/tauri' {
   export function convertFileSrc(filePath: string, protocol?: string): string;
 }
 
-declare module '@tauri-apps/api/dialog' {
+declare module '@tauri-apps/plugin-dialog' {
   export interface OpenDialogOptions {
     title?: string;
     defaultPath?: string;
@@ -27,7 +27,7 @@ declare module '@tauri-apps/api/dialog' {
   export function save(options?: SaveDialogOptions): Promise<string | null>;
 }
 
-declare module '@tauri-apps/api/fs' {
+declare module '@tauri-apps/plugin-fs' {
   type Dir = 'App' | 'Audio' | 'Cache' | 'Config' | 'Data' | 'LocalData' | 'Desktop' | 'Document' | 'Download' | 'Executable' | 'Font' | 'Home' | 'Picture' | 'Public' | 'Runtime' | 'Template' | 'Video' | 'Resource' | 'Log' | 'Temp' | 'AppConfig' | 'AppData' | 'AppLocalData' | 'AppCache' | 'AppLog';
   
   export function readTextFile(path: string, options?: { dir?: Dir }): Promise<string>;

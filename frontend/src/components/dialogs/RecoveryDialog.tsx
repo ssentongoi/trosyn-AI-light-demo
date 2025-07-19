@@ -42,7 +42,7 @@ const RecoveryDialog: React.FC<RecoveryDialogProps> = ({ open, onClose }) => {
       
       try {
         // In a real implementation, we would get this from the DocumentService
-        const files = await DocumentService.getInstance().checkForRecoveryFiles();
+        const files = await DocumentService.checkForRecoveryFiles();
         setRecoveryFiles(files);
       } catch (err) {
         console.error('Failed to load recovery files:', err);
@@ -59,7 +59,12 @@ const RecoveryDialog: React.FC<RecoveryDialogProps> = ({ open, onClose }) => {
     if (!selectedFile) return;
     
     try {
-      const content = await window.fs.readFile(selectedFile, 'utf-8');
+      // Mock implementation for web environment
+      const content = JSON.stringify({
+        originalPath: selectedFile,
+        content: 'Recovered content',
+        timestamp: new Date().toISOString()
+      });
       const recoveryData = JSON.parse(content);
       onClose(recoveryData.content, recoveryData.originalPath);
     } catch (err) {

@@ -90,7 +90,7 @@ Last Updated: ${new Date(document.updatedAt).toLocaleString()}
   <body>
     <h1>${document.title}</h1>
     <div class="content">
-      ${document.content.blocks?.map(block => {
+      ${document.content.blocks?.map((block: any) => {
         switch (block.type) {
           case 'header':
             return `<h${block.data.level}>${block.data.text}</h${block.data.level}>`;
@@ -108,7 +108,7 @@ Last Updated: ${new Date(document.updatedAt).toLocaleString()}
 </html>`;
 
       case 'markdown':
-        return metadata + document.content.blocks?.map(block => {
+        return metadata + document.content.blocks?.map((block: any) => {
           switch (block.type) {
             case 'header':
               return `${'#'.repeat(block.data.level)} ${block.data.text}\n\n`;
@@ -137,7 +137,7 @@ Last Updated: ${new Date(document.updatedAt).toLocaleString()}
 
       case 'txt':
       default:
-        return metadata + document.content.blocks?.map(block => {
+        return metadata + document.content.blocks?.map((block: any) => {
           switch (block.type) {
             case 'header':
               return `${block.data.text}\n${'='.repeat(block.data.text.length)}\n\n`;
@@ -168,8 +168,8 @@ Last Updated: ${new Date(document.updatedAt).toLocaleString()}
 
       if (isTauri()) {
         // In Tauri, we can use the native file save dialog
-        const { save } = await import('@tauri-apps/api/dialog');
-        const { writeTextFile } = await import('@tauri-apps/api/fs');
+        const { save } = await import('@tauri-apps/plugin-dialog');
+        const { writeTextFile } = await import('@tauri-apps/plugin-fs');
         
         const filePath = await save({
           defaultPath: fullFileName,

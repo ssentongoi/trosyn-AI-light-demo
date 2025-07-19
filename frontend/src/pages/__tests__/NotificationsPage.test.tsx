@@ -1,159 +1,240 @@
 import React from 'react';
-import { screen, render, waitFor, act } from '@testing-library/react';
+import { render, screen, act, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { 
+  vi, 
+  describe, 
+  it, 
+  expect, 
+  beforeEach, 
+  afterEach, 
+  beforeAll, 
+  afterAll 
+} from 'vitest';
 import { createNotificationServiceMocks, mockNotifications } from '../../test-utils/mocks/notificationService';
+
+// ====================
+// MOCKS
+// ====================
 
 // Mock MUI components
 vi.mock('@mui/material/Dialog', () => ({
   __esModule: true,
-  default: (props: any) => (
-    <div data-testid="dialog" onClick={props.onClose}>
-      {props.children}
+  default: ({ children, onClose }: any) => (
+    <div data-testid="dialog" onClick={onClose}>
+      {children}
     </div>
   ),
 }));
 
-// Mock MUI Tab component
 vi.mock('@mui/material/Tab', () => ({
   __esModule: true,
-  default: (props: any) => (
-    <button
-      data-testid={`tab-${props.value}`}
-      onClick={() => props.onChange({}, props.value)}
+  default: ({ label, value, onChange }: any) => (
+    <button 
+      data-testid={`tab-${value}`} 
+      onClick={(e) => onChange && onChange(e, value)}
     >
-      {props.label}
+      {label}
     </button>
   ),
 }));
-
-// Mock the notification service
-let notificationMocks: ReturnType<typeof createNotificationServiceMocks>;
-
-// Reset modules and mocks before each test
-beforeEach(() => {
-  vi.resetModules();
-  notificationMocks = createNotificationServiceMocks({
-    getNotifications: vi.fn().mockResolvedValue(mockNotifications),
-    getUnreadCount: vi.fn().mockReturnValue(1),
-  });
-  
-  vi.doMock('../../services/notificationService', () => ({
-    __esModule: true,
-    default: notificationMocks,
-  }));
-});
-
-afterEach(() => {
-  vi.clearAllMocks();
-});
-
-// Import component after setting up mocks
-let NotificationsPage: React.ComponentType;
-
-beforeEach(async () => {
-  // Dynamic import to ensure we get a fresh module with our mocks
-  const module = await import('../NotificationsPage');
-  NotificationsPage = module.default;
-});
 
 // Mock date-fns
 vi.mock('date-fns', () => ({
   formatDistanceToNow: () => '2 hours ago',
 }));
 
-// Mock ResizeObserver
+// ====================
+// TEST SETUP
+// ====================
+
+// Store the original setImmediate and clearImmediate
+const originalSetImmediate = global.setImmediate;
+const originalClearImmediate = global.clearImmediate;
+
+// ResizeObserver polyfill
 class ResizeObserver {
   observe() {}
   unobserve() {}
   disconnect() {}
 }
 
-// Add to global scope
-window.ResizeObserver = ResizeObserver;
+// Notification mocks
+let notificationMocks = createNotificationServiceMocks({
+  getNotifications: vi.fn().mockResolvedValue(mockNotifications),
+  getUnreadCount: vi.fn().mockReturnValue(1),
+  subscribe: vi.fn(() => vi.fn()),
+});
+
+// Mock the notification service module
+vi.mock('../../services/notificationService', () => ({
+  __esModule: true,
+  default: notificationMocks,
+}));
+
+// ====================
+// TEST SUITE
+// ====================
 
 describe('NotificationsPage', () => {
-  const renderNotificationsPage = async () => {
-    const result = render(
-      <div data-testid="notifications-page">
-        <NotificationsPage />
-      </div>
-    );
+  let NotificationsPage: React.ComponentType;
+  
+  beforeAll(async () => {
+    // Mock globals
+    global.ResizeObserver = ResizeObserver;
     
-    // Wait for any async operations to complete
-    await waitFor(() => {
-      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    });
-    return result;
-  };
+    // Dynamically import the component after setting up mocks
+    const module = await import('../NotificationsPage');
+    NotificationsPage = module.default;
+  });
 
   beforeEach(() => {
-    // Reset mock implementations
-    notificationMocks.getNotifications.mockClear();
-    notificationMocks.subscribe.mockClear();
-    notificationMocks.getUnreadCount.mockClear();
+    // Reset all mocks
+    vi.clearAllMocks();
     
-    // Setup default mock implementations
-    notificationMocks.getNotifications.mockResolvedValue(mockNotifications);
+    // Reset notification service mocks
+    notificationMocks.getNotifications.mockResolvedValue([...mockNotifications]);
     notificationMocks.getUnreadCount.mockReturnValue(1);
     notificationMocks.subscribe.mockImplementation((callback) => {
-      // Call the callback with test data
-      callback(mockNotifications);
-      return vi.fn(); // Return unsubscribe function
+      // Call the callback immediately with current notifications
+      Promise.resolve().then(() => callback([...mockNotifications]));
+      return vi.fn();
     });
   });
 
-  it('renders the notifications page', async () => {
+  afterEach(() => {
+    // Clean up any timers
+    vi.clearAllTimers();
+    // Ensure all pending promises are resolved
+    return new Promise(resolve => setTimeout(resolve, 0));
+  });
+
+  afterAll(() => {
+    // Restore original globals
+    vi.restoreAllMocks();
+    // @ts-expect-error - Cleaning up mock
+    delete global.ResizeObserver;
+  });
+
+  // ====================
+  // TEST UTILITIES
+  // ====================
+  
+  const renderComponent = async (props = {}) => {
+    let result;
+    
+    await act(async () => {
+      result = render(
+        <div data-testid="notifications-page">
+          <NotificationsPage {...props} />
+        </div>
+      );
+      // Allow any pending state updates to complete
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
+    
+    return result!;
+  };
+
+  // ====================
+  // TESTS
+  // ====================
+
+  it('renders notifications page', async () => {
     // Act
-    await renderNotificationsPage();
+    await renderComponent();
     
     // Assert
     expect(screen.getByTestId('notifications-page')).toBeInTheDocument();
-  });
-
-  it('loads notifications on mount', async () => {
-    // Arrange
-    const testNotifications = [
-      { ...mockNotifications[0], id: 'test-1', message: 'Test notification 1' },
-      { ...mockNotifications[1], id: 'test-2', message: 'Test notification 2' },
-    ];
-    notificationMocks.getNotifications.mockResolvedValueOnce(testNotifications);
-    
-    // Act
-    await renderNotificationsPage();
-    
-    // Assert
-    expect(notificationMocks.getNotifications).toHaveBeenCalled();
     await waitFor(() => {
-      testNotifications.forEach(notification => {
-        expect(screen.getByText(notification.message)).toBeInTheDocument();
-      });
+      expect(notificationMocks.getNotifications).toHaveBeenCalledTimes(1);
     });
   });
 
-  it('subscribes to notification updates', async () => {
+  it('displays notifications from mock service', async () => {
+    // Arrange
+    const customNotifications = [
+      { ...mockNotifications[0], id: '1', message: 'Test 1' },
+      { ...mockNotifications[1], id: '2', message: 'Test 2' },
+    ];
+    notificationMocks.getNotifications.mockResolvedValueOnce(customNotifications);
+
     // Act
-    await renderNotificationsPage();
+    await renderComponent();
     
     // Assert
-    expect(notificationMocks.subscribe).toHaveBeenCalled();
-    expect(notificationMocks.subscribe.mock.calls[0][0]).toBeInstanceOf(Function);
+    await waitFor(() => {
+      expect(screen.getByText('Test 1')).toBeInTheDocument();
+      expect(screen.getByText('Test 2')).toBeInTheDocument();
+    });
   });
 
-  it('unsubscribes on unmount', async () => {
+  it('subscribes to notification updates on mount', async () => {
     // Arrange
-    const unsubscribeMock = vi.fn();
-    notificationMocks.subscribe.mockReturnValueOnce(unsubscribeMock);
-    
+    const subscribeCallback = vi.fn();
+    notificationMocks.subscribe.mockImplementation((callback) => {
+      subscribeCallback();
+      callback([...mockNotifications]);
+      return vi.fn();
+    });
+
     // Act
-    const { unmount } = render(
-      <div data-testid="notifications-page">
-        <NotificationsPage />
-      </div>
-    );
+    await renderComponent();
+    
+    // Assert
+    await waitFor(() => {
+      expect(notificationMocks.subscribe).toHaveBeenCalledTimes(1);
+      expect(subscribeCallback).toHaveBeenCalled();
+    });
+  });
+
+  it('cleans up subscription on unmount', async () => {
+    // Arrange
+    const unsubscribe = vi.fn();
+    notificationMocks.subscribe.mockReturnValueOnce(unsubscribe);
+
+    // Act
+    const { unmount } = await renderComponent();
     unmount();
     
     // Assert
-    expect(unsubscribeMock).toHaveBeenCalled();
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it('handles empty notifications state', async () => {
+    // Arrange
+    notificationMocks.getNotifications.mockResolvedValueOnce([]);
+    
+    // Act
+    await renderComponent();
+    
+    // Assert
+    await waitFor(() => {
+      expect(screen.queryByText(/no notifications/i)).toBeInTheDocument();
+    });
+  });
+
+  it('handles notification service errors gracefully', async () => {
+    // Arrange
+    const errorMessage = 'Failed to load notifications';
+    notificationMocks.getNotifications.mockRejectedValueOnce(new Error(errorMessage));
+    
+    // Spy on console.error to prevent test output pollution
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    
+    // Act
+    await renderComponent();
+    
+    // Assert
+    await waitFor(() => {
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        'Error loading notifications:',
+        expect.any(Error)
+      );
+    });
+    
+    // Cleanup
+    consoleErrorSpy.mockRestore();
   });
 });
+

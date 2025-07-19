@@ -16,22 +16,22 @@ import {
   TablePagination,
   Paper,
 } from '@mui/material';
-import { Document } from '../../../../types/document';
-import { DocumentSort } from '../types';
+import { Document, DocumentOwner, DocumentTag } from '../../../../types/document';
+import { DocumentSort, SortField } from '../types/DocumentList.types';
 import { format } from 'date-fns';
 import { StarBorder, Star, MoreVert, InsertDriveFile } from '@mui/icons-material';
 import { bytesToSize } from '../utils';
 
-interface DocumentTableProps {
+export interface DocumentTableProps {
   documents: Document[];
   selectedDocuments: Set<string>;
   onSelectedDocumentsChange: (selected: Set<string>) => void;
   onDocumentClick?: (document: Document) => void;
   onDocumentDoubleClick?: (document: Document) => void;
   onDocumentAction: (action: string, document: Document) => void;
-  sortBy?: string;
+  sortBy?: SortField;
   sortOrder?: 'asc' | 'desc';
-  onSortChange?: (sort: { field: string; order: 'asc' | 'desc' }) => void;
+  onSortChange?: (sort: { field: SortField; order: 'asc' | 'desc' }) => void;
   selectable?: boolean;
   multiSelect?: boolean;
   loading?: boolean;
@@ -78,7 +78,7 @@ const DocumentTable: React.FC<DocumentTableProps> = ({
     onSelectedDocumentsChange(newSelected);
   }, [selectable, multiSelect, selectedDocuments, onSelectedDocumentsChange]);
 
-  const handleSort = useCallback((field: string) => {
+  const handleSort = useCallback((field: SortField) => {
     if (!onSortChange) return;
     
     const isAsc = sortBy === field && sortOrder === 'asc';
@@ -126,7 +126,7 @@ const DocumentTable: React.FC<DocumentTableProps> = ({
   }
 
   return (
-    <TableContainer component={Paper} elevation={0} data-testid="document-table">
+    <TableContainer component={Paper} elevation={0} data-testid="mock-document-table">
       <Table>
         <TableHead>
           <TableRow>

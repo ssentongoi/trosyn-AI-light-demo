@@ -1,10 +1,10 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { Box, Paper, Typography, CircularProgress } from '@mui/material';
 import { Document } from '../../../types/document';
-import { DocumentFilter, DocumentListProps, DocumentSort } from './types';
-import { DocumentToolbar } from './components/DocumentToolbar';
-import { DocumentTable } from './components/DocumentTable';
-import { DocumentPagination } from './components/DocumentPagination';
+import { DocumentFilter, DocumentListProps, DocumentSort, SortField } from './types';
+import DocumentToolbar from './components/DocumentToolbar';
+import DocumentTable from './components/DocumentTable';
+import DocumentPagination from './components/DocumentPagination';
 import { useDocumentApi } from '../../../contexts/DocumentApiContext';
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -30,7 +30,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({
   onSelectedDocumentsChange: externalOnSelectedDocumentsChange,
   
   // Sorting
-  sortBy: externalSortBy = DEFAULT_SORT.field,
+  sortBy: externalSortBy = DEFAULT_SORT.field as SortField,
   sortOrder: externalSortOrder = DEFAULT_SORT.order,
   onSortChange: externalOnSortChange,
   
@@ -44,8 +44,8 @@ export const DocumentList: React.FC<DocumentListProps> = ({
   onDocumentDelete: externalOnDocumentDelete,
   onDocumentDownload: externalOnDocumentDownload,
   onDocumentShare: externalOnDocumentShare,
-  onDocumentEdit: externalOnDocumentEdit,
-  onDocumentStar: externalOnDocumentStar,
+  onDocumentEdit,
+  onDocumentStar,
   
   // UI Customization
   emptyState,
@@ -100,12 +100,12 @@ export const DocumentList: React.FC<DocumentListProps> = ({
     }
   }, [isPageSizeControlled, externalOnPageSizeChange]);
   
-  // Handle sorting changes
-  const handleSortChange = useCallback((newSort: DocumentSort) => {
+  // Handle sort change
+  const handleSortChange = useCallback((sort: { field: SortField; order: 'asc' | 'desc' }) => {
     if (isSortControlled) {
-      externalOnSortChange?.(newSort);
+      externalOnSortChange?.(sort);
     } else {
-      setLocalSort(newSort);
+      setLocalSort(sort);
     }
   }, [isSortControlled, externalOnSortChange]);
   

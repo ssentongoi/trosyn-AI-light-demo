@@ -1,5 +1,7 @@
 import { Document } from '../../../types/document';
 
+export type SortField = keyof Omit<Document, 'content' | 'metadata' | 'owner' | 'lastModifiedBy' | 'tags' | 'versions' | 'permissions'>;
+
 export interface DocumentFilter {
   type?: string[];
   status?: string[];
@@ -12,7 +14,7 @@ export interface DocumentFilter {
 }
 
 export interface DocumentSort {
-  field: string;
+  field: SortField;
   order: 'asc' | 'desc';
 }
 
@@ -36,9 +38,9 @@ export interface DocumentListProps {
   onSelectedDocumentsChange?: (selectedIds: string[]) => void;
   
   // Sorting
-  sortBy?: string;
+  sortBy?: SortField;
   sortOrder?: 'asc' | 'desc';
-  onSortChange?: (sort: DocumentSort) => void;
+  onSortChange?: (sort: { field: SortField; order: 'asc' | 'desc' }) => void;
   
   // Filtering
   filters?: DocumentFilter;
@@ -55,11 +57,19 @@ export interface DocumentListProps {
   
   // UI Customization
   emptyState?: React.ReactNode;
+  showUploadButton?: boolean;
+  showNewFolderButton?: boolean;
+  showToolbar?: boolean;
+  showSearch?: boolean;
+  showFilters?: boolean;
+  showSort?: boolean;
+  showViewToggle?: boolean;
+  showMoreActionsButton?: boolean;
   rowActions?: Array<{
     label: string;
     icon: React.ReactNode;
-    onClick: (document: Document) => void;
-    disabled?: boolean | ((document: Document) => boolean);
+    onClick: (document?: Document) => void;
+    disabled?: boolean | ((document?: Document) => boolean);
   }>;
   
   // Styling

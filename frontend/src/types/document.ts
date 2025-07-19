@@ -1,7 +1,8 @@
 /**
  * Document interface representing document data in the application
  */
-export interface Document {
+// Base document properties that are common to all document types
+export interface BaseDocument {
   id: string;
   name: string;
   title?: string;
@@ -14,11 +15,9 @@ export interface Document {
   description?: string;
   createdAt?: string | Date;
   updatedAt?: string | Date;
-  lastModifiedBy?: string;
   isStarred?: boolean;
   isShared?: boolean;
   isDeleted?: boolean;
-  tags?: string[];
   metadata?: {
     [key: string]: any;
   };
@@ -27,6 +26,18 @@ export interface Document {
     canDelete: boolean;
     canShare: boolean;
   };
+}
+
+// Document with string tags (basic document type)
+export interface Document extends BaseDocument {
+  tags?: string[];
+  lastModifiedBy?: string;
+}
+
+// Document with rich tag objects
+export interface DocumentWithRichTags extends BaseDocument {
+  tags?: DocumentTag[];
+  lastModifiedBy?: DocumentOwner;
 }
 
 export interface DocumentOwner {
@@ -52,7 +63,8 @@ export interface DocumentTag {
   color?: string;
 }
 
-export interface EnhancedDocument extends Document {
+export interface EnhancedDocument extends Omit<DocumentWithRichTags, 'tags' | 'lastModifiedBy'> {
+  // Core document properties (overrides from DocumentWithRichTags)
   id: string;
   name: string;
   title: string;
@@ -61,26 +73,62 @@ export interface EnhancedDocument extends Document {
   mimeType: string;
   size: number;
   url: string;
+  
+  // Additional enhanced properties
   thumbnailUrl?: string;
-  isStarred?: boolean;
-  isShared?: boolean;
-  isPublic?: boolean;
-  isTrashed?: boolean;
-  isSelected?: boolean;
-  createdAt: string;
-  updatedAt: string;
-  owner: DocumentOwner;
-  lastModifiedBy?: DocumentOwner;
-  tags?: DocumentTag[];
-  versions?: DocumentVersion[];
-  permissions?: {
-    canView: boolean;
-    canEdit: boolean;
-    canDelete: boolean;
-    canShare: boolean;
-    canDownload: boolean;
+  versions: DocumentVersion[];
+  tags: DocumentTag[];  
+  sharedWith: Array<{
+    id: string;
+    name: string;
+    email: string;
+    role: 'viewer' | 'editor' | 'owner';
+    avatar?: string;
+  }>;
+  isPinned?: boolean;
+  isFavorite?: boolean;
+  isArchived?: boolean;
+  status?: 'draft' | 'published' | 'archived' | 'deleted';
+  lastOpenedAt?: string | Date;
+  lastModifiedAt?: string | Date;
+  createdBy: DocumentOwner;
+  updatedBy?: DocumentOwner;
+  parentId?: string;
+  children?: EnhancedDocument[];
+  breadcrumbs?: Array<{ id: string; name: string }>;
+  version: number;
+  isCurrentVersion: boolean;
+  changeLog?: string;
+  downloadCount: number;
+  viewCount: number;
+  shareCount: number;
+  commentsCount: number;
+  tasksCount: number;
+  completedTasksCount: number;
+  isTemplate: boolean;
+  templateId?: string;
+  relatedDocuments?: string[];
+  relatedTickets?: string[];
+  customFields?: {
+    [key: string]: any;
   };
-  metadata?: Record<string, any>;
+  accessControl?: {
+    canView: string[];
+    canEdit: string[];
+    canDelete: string[];
+    canShare: string[];
+  };
+  retentionPolicy?: {
+    expiresAt?: string | Date;
+    isPermanent: boolean;
+    holdPolicy?: 'legal' | 'regulatory' | 'business' | 'none';
+  };
+  workflow?: {
+    status: string;
+    step: string;
+    assignee?: string;
+    dueDate?: string | Date;
+  };
 }
 
 export interface DocumentFilter {
@@ -100,8 +148,26 @@ export interface DocumentFilter {
   [key: string]: any; // Allow additional filter properties
 }
 
+// Define all possible sortable fields
+export type SortableField = 
+  | 'id' 
+  | 'createdAt' 
+  | 'name' 
+  | 'title' 
+  | 'date'
+  | 'url' 
+  | 'size' 
+  | 'description' 
+  | 'mimeType' 
+  | 'updatedAt' 
+  | 'isStarred' 
+  | 'isShared' 
+  | 'isPublic' 
+  | 'isTrashed' 
+  | 'thumbnailUrl';
+
 export interface DocumentSort {
-  field: string;
+  field: SortableField;
   order: 'asc' | 'desc';
   direction?: 'asc' | 'desc'; // For backward compatibility
 }

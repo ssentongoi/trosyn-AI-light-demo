@@ -98,9 +98,9 @@ const NotificationsPage: React.FC = () => {
   const loadNotifications = async () => {
     try {
       setLoading(true);
-      const allNotifications = notificationService.getNotifications();
-      setNotifications(allNotifications);
       setError(null);
+      const allNotifications = await notificationService.getNotifications();
+      setNotifications(allNotifications);
     } catch (err) {
       console.error('Failed to load notifications:', err);
       setError('Failed to load notifications. Please try again.');
@@ -109,26 +109,42 @@ const NotificationsPage: React.FC = () => {
     }
   };
 
-  // Initial load
+  // Initial load and subscription
   useEffect(() => {
-    loadNotifications();
+    let isMounted = true;
     
-    // Subscribe to notification updates
-    const unsubscribe = notificationService.subscribe((updatedNotifications: NotificationType[]) => {
-      setNotifications(updatedNotifications);
-    });
+    const loadAndSubscribe = async () => {
+      await loadNotifications();
+      
+      if (isMounted) {
+        // Subscribe to notification updates
+        const unsubscribe = notificationService.subscribe((updatedNotifications: NotificationType[]) => {
+          if (isMounted) {
+            setNotifications(updatedNotifications);
+          }
+        });
+        
+        return unsubscribe;
+      }
+    };
+    
+    const unsubscribePromise = loadAndSubscribe();
     
     return () => {
-      unsubscribe();
+      isMounted = false;
+      unsubscribePromise.then(unsubscribe => unsubscribe && unsubscribe());
     };
   }, []);
 
   // Filter notifications based on active tab
-  const filteredNotifications = notifications.filter(notification => {
-    if (activeTab === 'unread') return !notification.read;
-    if (activeTab === 'archived') return notification.archived;
-    return true;
-  });
+  const filteredNotifications = React.useMemo(() => 
+    notifications.filter(notification => {
+      if (activeTab === 'unread') return !notification.read;
+      if (activeTab === 'archived') return notification.archived;
+      return true;
+    }),
+    [notifications, activeTab]
+  );
 
   // Handle menu open
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, notification: NotificationType) => {
@@ -208,7 +224,11 @@ const NotificationsPage: React.FC = () => {
     return (
       <Container maxWidth="lg">
         <Alert severity="error">{error}</Alert>
-        <Button onClick={loadNotifications} startIcon={<RefreshIcon />}>
+        <Button 
+          onClick={loadNotifications} 
+          startIcon={<RefreshIcon />}
+          data-testid="retry-button"
+        >
           Retry
         </Button>
       </Container>
@@ -216,48 +236,64 @@ const NotificationsPage: React.FC = () => {
   }
 
   return (
-    <Container maxWidth="lg">
-      <Card>
-        <CardHeader
-          title={
-            <Box display="flex" alignItems="center">
-              <NotificationsIcon sx={{ mr: 1 }} />
-              <Typography variant="h6">Notifications</Typography>
-              <Box flexGrow={1} />
-              <Button
-                startIcon={<MarkEmailReadIcon />}
-                onClick={handleMarkAllAsRead}
-                disabled={notifications.every(n => n.read)}
-              >
-                Mark all as read
-              </Button>
-            </Box>
-          }
-        />
+    <Container maxWidth="md" data-testid="notifications-container">
+      <Box mt={4} mb={4}>
+        <Typography variant="h4" component="h1" gutterBottom>
+          Notifications
+        </Typography>
         <Divider />
-        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Tabs
-            value={activeTab}
-            onChange={(_, newValue) => setActiveTab(newValue)}
-            aria-label="notification tabs"
-          >
-            <Tab label={`All (${notifications.length})`} value="all" />
-            <Tab 
-              label={
-                <Badge 
-                  badgeContent={notifications.filter(n => !n.read).length} 
-                  color="primary"
+      </Box>
+      <Card data-testid="notifications-card">
+          <CardHeader
+            title={
+              <Box display="flex" alignItems="center">
+                <NotificationsIcon sx={{ mr: 1 }} />
+                <Typography variant="h6">Notifications</Typography>
+                <Box flexGrow={1} />
+                <Button
+                  startIcon={<MarkEmailReadIcon />}
+                  onClick={handleMarkAllAsRead}
+                  disabled={notifications.every(n => n.read)}
                 >
-                  <span>Unread</span>
-                </Badge>
-              } 
-              value="unread" 
-            />
-            <Tab 
-              label={`Archived (${notifications.filter(n => n.archived).length})`} 
-              value="archived" 
-            />
-          </Tabs>
+                  Mark all as read
+                </Button>
+              </Box>
+            }
+          />
+          <Divider />
+          <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+            <Tabs
+              value={activeTab}
+              onChange={(_, newValue) => setActiveTab(newValue as TabValue)}
+              indicatorColor="primary"
+              textColor="primary"
+              variant="fullWidth"
+              data-testid="notifications-tabs"
+            >
+              <Tab 
+                label="All" 
+                value="all" 
+                data-testid="tab-all"
+              />
+              <Tab 
+                label={
+                  <Badge 
+                    badgeContent={notifications.filter(n => !n.read).length}
+                    color="primary"
+                    data-testid="unread-badge"
+                  >
+                    <span>Unread</span>
+                  </Badge>
+                } 
+                value="unread" 
+                data-testid="tab-unread"
+              />
+              <Tab 
+                label={`Archived (${notifications.filter(n => n.archived).length})`} 
+                value="archived"
+                data-testid="tab-archived"
+              />
+            </Tabs>
         </Box>
         <CardContent>
           {filteredNotifications.length === 0 ? (

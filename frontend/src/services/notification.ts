@@ -1,10 +1,46 @@
-import { EventEmitter } from 'events';
 import { useCallback, useEffect, useRef } from 'react';
 import { useWebSocketContext } from '../contexts/WebSocketContext';
 import { AnyWebSocketMessage, WebSocketMessage } from '../types/websocket';
 
+// Browser-compatible event emitter implementation
+class BrowserEventEmitter {
+  private events: Map<string, Function[]> = new Map();
+
+  on(event: string, listener: Function) {
+    if (!this.events.has(event)) {
+      this.events.set(event, []);
+    }
+    this.events.get(event)!.push(listener);
+  }
+
+  off(event: string, listener: Function) {
+    const listeners = this.events.get(event);
+    if (listeners) {
+      const index = listeners.indexOf(listener);
+      if (index > -1) {
+        listeners.splice(index, 1);
+      }
+    }
+  }
+
+  emit(event: string, ...args: any[]) {
+    const listeners = this.events.get(event);
+    if (listeners) {
+      listeners.forEach(listener => listener(...args));
+    }
+  }
+
+  removeAllListeners(event?: string) {
+    if (event) {
+      this.events.delete(event);
+    } else {
+      this.events.clear();
+    }
+  }
+}
+
 // Create an event emitter instance for real-time notifications
-const notificationEmitter = new EventEmitter();
+const notificationEmitter = new BrowserEventEmitter();
 
 // Type definitions for notification service
 export interface Notification {

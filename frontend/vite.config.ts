@@ -29,7 +29,20 @@ const config = ({ mode }: ConfigEnv): UserConfig => {
       port: 3000,
       open: true,
       strictPort: true,
+      // Enable history API fallback for SPA routing
+      historyApiFallback: true,
+      // Configure CORS if needed
+      cors: true,
+      // Recommended for Tauri
+      clearScreen: false,
+      hmr: {
+        overlay: false,
+      },
     },
+    // Set base URL for the application
+    base: '/',
+    // Configure public directory for static assets
+    publicDir: 'public',
     build: {
       outDir: 'build',
       sourcemap: true,
@@ -57,6 +70,8 @@ const config = ({ mode }: ConfigEnv): UserConfig => {
         'react-dom',
         'react-router-dom',
       ],
+      // Exclude Tauri API from optimization
+      exclude: ['@tauri-apps/api'],
       // Force dependency optimization in development
       force: mode === 'development',
     },

@@ -144,6 +144,7 @@ describe('DocumentList utils', () => {
           end: new Date('2023-01-02')
         }
       });
+      console.log('DEBUG: date range filtered', filtered.map(d => ({id: d.id, updatedAt: d.updatedAt})));
       expect(filtered).toHaveLength(1);
       expect(filtered[0].id).toBe('2');
     });
@@ -153,6 +154,7 @@ describe('DocumentList utils', () => {
         tags: ['work'],
         mimeType: 'spreadsheet'
       });
+      console.log('DEBUG: combined filters filtered', filtered.map(d => ({id: d.id, tags: d.tags, mimeType: d.mimeType})));
       expect(filtered).toHaveLength(1);
       expect(filtered[0].id).toBe('3');
     });

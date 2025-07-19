@@ -48,7 +48,7 @@ export const getMimeTypeCategory = (mimeType: string): string => {
     case 'application':
       if (mimeType.includes('pdf')) return 'pdf';
       if (mimeType.includes('word') || mimeType.includes('document')) return 'document';
-      if (mimeType.includes('excel') || mimeType.includes('spreadsheet')) return 'spreadsheet';
+      if (mimeType.includes('excel') || mimeType.includes('spreadsheet') || mimeType.includes('sheet')) return 'spreadsheet';
       if (mimeType.includes('powerpoint') || mimeType.includes('presentation')) return 'presentation';
       if (mimeType.includes('zip') || mimeType.includes('compressed')) return 'archive';
       return 'document';
@@ -78,18 +78,38 @@ export const sortDocuments = <T extends Document>(
   sortOrder: 'asc' | 'desc' = 'asc'
 ): T[] => {
   return [...documents].sort((a, b) => {
-    let aValue = a[sortBy];
-    let bValue = b[sortBy];
+    // Safely get values, handling potential undefined
+    const aValue = a[sortBy];
+    const bValue = b[sortBy];
     
     // Handle undefined/null values - put them at the end
-    if (aValue == null) return sortOrder === 'asc' ? 1 : -1;
-    if (bValue == null) return sortOrder === 'asc' ? -1 : 1;
+    if (aValue === null || aValue === undefined) {
+      return sortOrder === 'asc' ? 1 : -1;
+    }
+    if (bValue === null || bValue === undefined) {
+      return sortOrder === 'asc' ? -1 : 1;
+    }
     
     // Handle dates
-    if (isValidDate(aValue) && isValidDate(bValue)) {
-      const aDate = new Date(aValue).getTime();
-      const bDate = new Date(bValue).getTime();
-      return sortOrder === 'asc' ? aDate - bDate : bDate - aDate;
+    const aIsDate = isValidDate(aValue);
+    const bIsDate = isValidDate(bValue);
+    
+    if (aIsDate && bIsDate) {
+      try {
+        const aDate = new Date(aValue as string | Date).getTime();
+        const bDate = new Date(bValue as string | Date).getTime();
+        return sortOrder === 'asc' ? aDate - bDate : bDate - aDate;
+      } catch (e) {
+        console.warn('Error parsing dates for sorting', e);
+        return 0;
+      }
+    }
+    
+    // If one is a date and the other isn't, put the non-date first in ascending order
+    if (aIsDate !== bIsDate) {
+      return sortOrder === 'asc' 
+        ? (aIsDate ? 1 : -1) 
+        : (aIsDate ? -1 : 1);
     }
     
     // Convert to string for comparison if values are of different types
@@ -120,6 +140,36 @@ const isDateRange = (value: unknown): value is DateRange => {
  * @param filters - Filter object with document properties and values to match
  * @returns Filtered array of documents
  */
+// Helper: Normalize a date to start of day
+function normalizeStart(date: Date) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+// Helper: Normalize a date to end of day
+function normalizeEnd(date: Date) {
+  const d = new Date(date);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+// Helper: Date filter
+function dateInRange(docDate: Date | string | undefined, start?: Date, end?: Date): boolean {
+  if (!docDate) return false;
+  const docD = normalizeStart(new Date(docDate));
+  if (start && docD < normalizeStart(start)) return false;
+  if (end && docD > normalizeEnd(end)) return false;
+  return true;
+}
+// Helper: Tag filter (OR logic)
+function hasTag(docTags: string[] = [], filterTags: string[] = []) {
+  return filterTags.length === 0 || filterTags.some(tag => docTags.includes(tag));
+}
+// Helper: MimeType filter
+function matchesMimeType(docMime: string | undefined, filterType: string) {
+  if (!docMime) return false;
+  return getMimeTypeCategory(docMime) === filterType;
+}
+
 export const filterDocuments = <T extends Document>(
   documents: T[],
   searchQuery: string = '',
@@ -135,72 +185,53 @@ export const filterDocuments = <T extends Document>(
   return documents.filter(doc => {
     // Apply search query across name and description
     if (searchLower) {
-      const matchesSearch = 
-        doc.name.toLowerCase().includes(searchLower) ||
-        (doc.description && doc.description.toLowerCase().includes(searchLower));
+      const nameMatch = doc.name.toLowerCase().includes(searchLower);
+      const descMatch = doc.description && doc.description.toLowerCase().includes(searchLower);
+      const matchesSearch = nameMatch || descMatch;
       
       if (!matchesSearch) {
         return false;
       }
     }
-    
-    // Apply filters
-    for (const [key, value] of Object.entries(filters)) {
-      // Skip undefined, null, or empty string values
-      if (value === undefined || value === null || value === '') {
-        continue;
-      }
+    // --- Date filter ---
+    if (filters.dateRange) {
+      const { start, end } = filters.dateRange;
+      const startDate = start ? new Date(start) : undefined;
+      const endDate = end ? new Date(end) : undefined;
+      const isInDateRange = dateInRange(doc.updatedAt, startDate, endDate);
       
-      const docValue = doc[key as keyof T];
-      
-      // Handle date range filter
-      if (key === 'dateRange' && isDateRange(value)) {
-        if (!doc.updatedAt) return false;
-        
-        const docDate = new Date(doc.updatedAt).getTime();
-        
-        if (value.start) {
-          const startDate = new Date(value.start).getTime();
-          if (docDate < startDate) return false;
-        }
-        
-        if (value.end) {
-          const endDate = new Date(value.end).getTime() + 86400000; // Add 1 day to include the end date
-          if (docDate > endDate) return false;
-        }
-        
-        continue;
-      }
-      
-      // Handle MIME type category filter
-      if (key === 'mimeType' && typeof value === 'string' && doc.mimeType) {
-        const docCategory = getMimeTypeCategory(doc.mimeType);
-        if (docCategory !== value) {
-          return false;
-        }
-        continue;
-      }
-      
-      // Handle array filters (e.g., tags)
-      if (Array.isArray(value)) {
-        if (!Array.isArray(docValue) || value.length === 0) {
-          return false;
-        }
-        
-        // Check if all filter values exist in the document's array
-        if (!value.every(v => docValue.includes(v))) {
-          return false;
-        }
-        
-        continue;
-      }
-      
-      // Handle exact match for primitive values
-      if (docValue !== value) {
+      if (!isInDateRange) {
         return false;
       }
     }
-    
+    // --- MimeType filter ---
+    if (filters.mimeType && typeof filters.mimeType === 'string') {
+      const docMimeType = doc.mimeType || 'unknown';
+      const category = getMimeTypeCategory(docMimeType);
+      const matches = category === filters.mimeType;
+      
+      if (!matches) {
+        return false;
+      }
+    }
+    // --- Tag filter ---
+    if (filters.tags && Array.isArray(filters.tags)) {
+      const docTags = doc.tags || [];
+      const hasMatchingTag = filters.tags.length === 0 || 
+                           filters.tags.some(tag => docTags.includes(tag));
+      
+      if (!hasMatchingTag) {
+        return false;
+      }
+    }
+    // --- Other primitive filters ---
+    for (const [key, value] of Object.entries(filters)) {
+      if (['dateRange','mimeType','tags'].includes(key)) continue;
+      const docValue = doc[key as keyof T];
+      if (value !== undefined && value !== null && value !== '' && docValue !== value) {
+        return false;
+      }
+    }
     return true;
   });
 };

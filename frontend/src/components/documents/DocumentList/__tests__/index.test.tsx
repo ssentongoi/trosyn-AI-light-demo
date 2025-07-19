@@ -103,7 +103,7 @@ describe('DocumentList', () => {
     // Table should show empty state
   });
 
-  it('handles document selection', async () => {
+  it('handles document selection', () => {
     const onDocumentClick = vi.fn();
     const onDocumentDoubleClick = vi.fn();
     

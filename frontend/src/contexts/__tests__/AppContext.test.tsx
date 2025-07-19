@@ -108,15 +108,28 @@ describe('AppContext', () => {
       })),
     });
 
-    // Mock service calls
+    // Mock auth service calls
     (authService.login as vi.Mock).mockResolvedValue({ token: 'test-token', user: mockUser });
     (authService.logout as vi.Mock).mockResolvedValue(undefined);
     (authService.getCurrentUser as vi.Mock).mockResolvedValue(mockUser);
+    
+    // Mock notification service methods
     (notificationService.connect as vi.Mock).mockImplementation(() => {});
     (notificationService.getNotifications as vi.Mock).mockResolvedValue([mockNotification]);
-    (notificationService.markAsRead as vi.Mock).mockResolvedValue(undefined);
+    (notificationService.markAsRead as vi.Mock).mockImplementation((id: string) => {
+      // Simulate marking a notification as read
+      return Promise.resolve();
+    });
     (notificationService.markAllAsRead as vi.Mock).mockResolvedValue(undefined);
-    (notificationService.deleteNotification as vi.Mock).mockResolvedValue(undefined);
+    (notificationService.deleteNotification as vi.Mock).mockImplementation((id: string) => {
+      // Simulate deleting a notification
+      return Promise.resolve();
+    });
+    (notificationService.subscribe as vi.Mock).mockImplementation((callback) => {
+      // Return a simple unsubscribe function
+      return () => {};
+    });
+    (notificationService.clear as vi.Mock).mockResolvedValue(undefined);
   });
 
   it('should render children and provide initial state', () => {
@@ -133,6 +146,15 @@ describe('AppContext', () => {
 
     await waitFor(() => {
       expect(authService.login).toHaveBeenCalledWith('test@example.com', 'password');
+      expect(localStorage.setItem).toHaveBeenCalledWith('token', 'test-token');
+      expect(notificationService.connect).toHaveBeenCalled();
+    });
+    
+    // Wait for state updates to complete
+    await waitFor(() => {
+      expect(screen.getByTestId('isAuthenticated')).toHaveTextContent('true');
+      expect(screen.getByTestId('username')).toHaveTextContent('Test User');
+      expect(screen.getByTestId('email')).toHaveTextContent('test@example.com');
     });
   });
   it('should handle login and update state', async () => {

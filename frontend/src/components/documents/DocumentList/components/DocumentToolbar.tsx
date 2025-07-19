@@ -28,6 +28,7 @@ import {
   Star as StarIcon,
   StarBorder as StarBorderIcon,
 } from '@mui/icons-material';
+import { Document } from '../../../../types/document';
 import { DocumentFilter } from '../types';
 
 interface DocumentToolbarProps {
@@ -39,8 +40,8 @@ interface DocumentToolbarProps {
   rowActions?: Array<{
     label: string;
     icon: React.ReactNode;
-    onClick: () => void;
-    disabled?: boolean;
+    onClick: (document?: Document) => void;
+    disabled?: boolean | ((document?: Document) => boolean);
   }>;
   viewMode?: 'grid' | 'list' | 'table';
   onViewModeChange?: (mode: 'grid' | 'list' | 'table') => void;
@@ -92,6 +93,7 @@ const DocumentToolbar: React.FC<DocumentToolbarProps> = ({
 
   return (
     <Toolbar
+      data-testid="mock-document-toolbar"
       sx={{
         display: 'flex',
         justifyContent: 'space-between',
@@ -289,21 +291,28 @@ const DocumentToolbar: React.FC<DocumentToolbarProps> = ({
                 horizontal: 'right',
               }}
             >
-              {rowActions.map((action, index) => (
-                <MenuItem
-                  key={index}
-                  onClick={() => {
-                    action.onClick();
-                    handleMoreActionsClose();
-                  }}
-                  disabled={action.disabled}
-                >
-                  {action.icon}
-                  <Box component="span" sx={{ ml: 1 }}>
-                    {action.label}
-                  </Box>
-                </MenuItem>
-              ))}
+              {rowActions.map((action, index) => {
+                // Handle disabled prop that can be a function or boolean
+                const isDisabled = typeof action.disabled === 'function' 
+                  ? action.disabled() 
+                  : action.disabled;
+                  
+                return (
+                  <MenuItem
+                    key={index}
+                    onClick={() => {
+                      action.onClick();
+                      handleMoreActionsClose();
+                    }}
+                    disabled={isDisabled}
+                  >
+                    {action.icon}
+                    <Box component="span" sx={{ ml: 1 }}>
+                      {action.label}
+                    </Box>
+                  </MenuItem>
+                );
+              })}
             </Menu>
           </>
         )}

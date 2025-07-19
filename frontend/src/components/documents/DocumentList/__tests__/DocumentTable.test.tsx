@@ -78,10 +78,6 @@ describe('DocumentTable', () => {
     );
   };
   
-  // Mock the document click handler
-  const mockDocumentClick = vi.fn();
-  const mockDocumentDoubleClick = vi.fn();
-  
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -147,7 +143,7 @@ describe('DocumentTable', () => {
     expect(mockDocumentAction).toHaveBeenCalledWith('star', mockDocuments[0]);
   });
 
-  it('triggers click and double click handlers', async () => {
+  it('triggers click and double click handlers', () => {
     const handleClick = vi.fn();
     const handleDoubleClick = vi.fn();
     

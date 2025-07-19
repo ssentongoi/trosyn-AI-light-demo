@@ -4,7 +4,8 @@
     "@types/file-saver": "^2.0.7",
     "@typescript-eslint/eslint-plugin": "^8.36.0",
     "@typescript-eslint/parser": "^8.36.0",
-    "eslint-plugin-react-hooks": "^5.2.0"
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "vitest": "^3.2.4"
   },
   "dependencies": {
     "@editorjs/editorjs": "^2.30.8",

@@ -113,6 +113,7 @@ const createNotificationService = (): NotificationService => {
       return [...notifications];
     },
 
+
     subscribe(callback: (notifications: Notification[]) => void) {
       subscribers.push(callback);
       callback([...notifications]); // Initial call

@@ -39,6 +39,8 @@ interface DocumentToolbarProps {
   versions?: DocumentVersion[];
   activeVersionId?: string | null;
   onVersionSelect?: (version: DocumentVersion) => void;
+  currentDocument?: any;
+  isLoading?: boolean;
 }
 
 const DocumentToolbar: React.FC<DocumentToolbarProps> = ({
@@ -50,7 +52,9 @@ const DocumentToolbar: React.FC<DocumentToolbarProps> = ({
   hasUnsavedChanges,
   versions = [],
   activeVersionId,
-  onVersionSelect
+  onVersionSelect,
+  currentDocument,
+  isLoading = false
 }) => {
 
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -80,7 +84,7 @@ const DocumentToolbar: React.FC<DocumentToolbarProps> = ({
     if (!selectedVersion) return;
     
     try {
-      onVersionSelect(selectedVersion);
+      onVersionSelect?.(selectedVersion);
       setShowRestoreConfirm(false);
       setSelectedVersion(null);
     } catch (error) {
@@ -88,6 +92,10 @@ const DocumentToolbar: React.FC<DocumentToolbarProps> = ({
       throw error; // Re-throw to allow error handling in parent
     }
   }, [onVersionSelect, selectedVersion]);
+
+  const confirmRestore = useCallback(async () => {
+    await handleRestoreVersion();
+  }, [handleRestoreVersion]);
 
   const handleSave = useCallback(async () => {
     try {
@@ -182,7 +190,7 @@ const DocumentToolbar: React.FC<DocumentToolbarProps> = ({
           <IconButton
             color="inherit"
             onClick={handleMenuOpen}
-            disabled={isLoading}
+            disabled={isLoading || isSaving}
           >
             <MoreIcon />
           </IconButton>
@@ -215,7 +223,7 @@ const DocumentToolbar: React.FC<DocumentToolbarProps> = ({
             document={currentDocument}
             onVersionSelect={handleVersionSelect}
             onRestore={handleRestoreClick}
-            currentVersionId={currentDocument.versions[0]?.id}
+            currentVersionId={currentDocument?.versions?.[0]?.id}
           />
         </DialogContent>
         <DialogActions>

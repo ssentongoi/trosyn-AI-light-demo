@@ -1,58 +1,62 @@
-// Type definitions for Tauri APIs
-type TauriInvoke = <T = any>(cmd: string, args?: Record<string, any>) => Promise<T>;
-type TauriFs = {
-  readTextFile: (path: string) => Promise<string>;
-  writeFile: (path: string, contents: string) => Promise<void>;
-  exists: (path: string) => Promise<boolean>;
-  createDir: (path: string, options?: { recursive: boolean }) => Promise<void>;
-  readDir: (path: string) => Promise<Array<{ name: string; path: string; isFile: boolean }>>;
+import { tauriService } from '../utils/tauriService';
+import { isTauri } from '../utils/environment';
+
+// Type definitions for document operations
+type FileSystemItem = {
+  name: string;
+  path: string;
+  isFile: boolean;
 };
 
 // Mock implementations for web environment
-const mockInvoke: TauriInvoke = async () => {
-  console.log('Tauri not available, using mock implementation');
-  return {} as any;
+const mockFs = {
+  readTextFile: async (): Promise<string> => {
+    console.log('Tauri not available, using mock FS implementation');
+    return '';
+  },
+  writeFile: async (): Promise<void> => {
+    console.log('Tauri not available, using mock FS implementation');
+  },
+  exists: async (): Promise<boolean> => false,
+  createDir: async (): Promise<void> => {},
+  readDir: async (): Promise<FileSystemItem[]> => [],
+  removeFile: async (): Promise<void> => {
+    console.log('Tauri not available, using mock FS implementation');
+  }
 };
 
-const mockFs: TauriFs = {
-  readTextFile: async () => '',
-  writeFile: async () => {},
-  exists: async () => false,
-  createDir: async () => {},
-  readDir: async () => []
+// Use Tauri service if available, otherwise use mocks
+const fs = tauriService.isTauri ? {
+  readTextFile: async (path: string): Promise<string> => {
+    return await tauriService.readFile(path);
+  },
+  writeFile: async (path: string, contents: string): Promise<void> => {
+    await tauriService.writeFile(path, contents);
+  },
+  exists: async (path: string): Promise<boolean> => {
+    return await tauriService.fileExists(path);
+  },
+  createDir: async (path: string, options?: { recursive: boolean }): Promise<void> => {
+    await tauriService.invoke('fs_create_dir', { path, ...options });
+  },
+  readDir: async (path: string): Promise<FileSystemItem[]> => {
+    return await tauriService.invoke('fs_read_dir', { path });
+  },
+  removeFile: async (path: string): Promise<void> => {
+    await tauriService.invoke('fs_remove_file', { path });
+  }
+} : mockFs;
+
+// Tauri invoke wrapper with better typing
+const invoke = async <T = any>(cmd: string, args?: Record<string, any>): Promise<T> => {
+  if (tauriService.isTauri) {
+    return await tauriService.invoke<T>(cmd, args);
+  }
+  console.log(`Tauri not available, skipping invoke: ${cmd}`);
+  return null as any;
 };
 
-// Initialize Tauri APIs
-let invoke: TauriInvoke = mockInvoke;
-let fs: TauriFs = mockFs;
-
-// Check if running in Tauri environment
-const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
-
-// Initialize Tauri APIs if available
-if (isTauri) {
-  Promise.all([
-    import('@tauri-apps/api/tauri'),
-    import('@tauri-apps/api/fs'),
-    import('@tauri-apps/api/path')
-  ])
-    .then(([tauri, tauriFs, tauriPath]) => {
-      invoke = tauri.invoke;
-      fs = {
-        readTextFile: tauriFs.readTextFile,
-        writeFile: async (path, contents) => {
-          await tauriFs.writeTextFile(path, contents);
-        },
-        exists: tauriFs.exists,
-        createDir: tauriFs.createDir,
-        readDir: tauriFs.readDir
-      };
-      console.log('Tauri APIs initialized');
-    })
-    .catch(error => {
-      console.warn('Failed to initialize Tauri APIs, using mock implementation', error);
-    });
-}
+console.log('DocumentService initialized with Tauri support:', tauriService.isTauri);
 
 import { mockDialogService } from './MockDialogService';
 import { v4 as uuidv4 } from 'uuid';
@@ -117,7 +121,7 @@ class DocumentServiceClass {
 
   // Initialize the document service
   initialize() {
-    if (isTauri) {
+    if (isTauri()) {
       this.setupAutoSave();
       this.setupRecovery();
     }
@@ -155,7 +159,7 @@ class DocumentServiceClass {
 
   // Set up document recovery
   private setupRecovery() {
-    if (isTauri) {
+    if (isTauri()) {
       this.checkForRecoveryFiles().catch(console.error);
       this.setupFileWatching().catch(console.error);
     }
@@ -163,10 +167,10 @@ class DocumentServiceClass {
 
   // Set up file watching for the current document
   private async setupFileWatching() {
-    if (!isTauri) return;
+    if (!isTauri()) return;
     
     try {
-      const { watch, watchImmediate } = await import('@tauri-apps/plugin-fs-watch');
+      const { watch } = await import('@tauri-apps/plugin-fs');
       
       // Stop any existing watchers
       this.stopWatchingFiles();
@@ -179,12 +183,14 @@ class DocumentServiceClass {
         const unwatch = await watch(
           dir,
           async (event) => {
-            if (event.path === this.currentDocument?.filePath) {
+            // WatchEvent uses 'paths' array, not 'path'
+            const eventPath = event.paths[0]; // Get the first path from the array
+            if (eventPath === this.currentDocument?.filePath) {
               try {
-                const content = await fs.readTextFile(event.path);
-                const callback = this.fileWatchers.get(event.path);
+                const content = await fs.readTextFile(eventPath);
+                const callback = this.fileWatchers.get(eventPath);
                 if (callback) {
-                  callback({ path: event.path, content });
+                  callback({ path: eventPath, content });
                 }
               } catch (error) {
                 console.error('Error handling file change:', error);
@@ -282,8 +288,8 @@ class DocumentServiceClass {
   }
 
   // Check for recovery files and auto-saves
-  private async checkForRecoveryFiles(): Promise<Array<{path: string, lastModified: Date}>> {
-    if (!isTauri) return [];
+  public async checkForRecoveryFiles(): Promise<Array<{path: string, lastModified: Date}>> {
+    if (!isTauri()) return [];
     
     try {
       const path = await import('@tauri-apps/api/path');
@@ -317,7 +323,7 @@ class DocumentServiceClass {
   
   // Save recovery data for the current document
   private async saveRecoveryData(content: string): Promise<void> {
-    if (!isTauri || !this.currentDocument?.filePath) return;
+    if (!isTauri() || !this.currentDocument?.filePath) return;
     
     try {
       const path = await import('@tauri-apps/api/path');
@@ -357,7 +363,7 @@ class DocumentServiceClass {
   // List documents
   async listDocuments(): Promise<Document[]> {
     try {
-      if (isTauri) {
+      if (isTauri()) {
         const docs = await invoke<Array<Document & { createdAt: string; updatedAt: string }>>('list_documents');
         return docs.map((doc: Document & { createdAt: string; updatedAt: string }) => ({
           ...doc,
@@ -382,7 +388,7 @@ class DocumentServiceClass {
     try {
       let doc: Document;
       
-      if (isTauri) {
+      if (isTauri()) {
         const result = await invoke<Document & { createdAt: string; updatedAt: string }>('get_document', { id });
         doc = {
           ...result,
@@ -435,7 +441,7 @@ class DocumentServiceClass {
       // Save to file system
       if (doc.filePath) {
         try {
-          if (isTauri) {
+          if (isTauri()) {
             // Ensure directory exists
             const path = await import('@tauri-apps/api/path');
             const dir = await path.dirname(doc.filePath);
@@ -483,7 +489,7 @@ class DocumentServiceClass {
       let content: string;
       let doc: Document;
       
-      if (isTauri) {
+      if (isTauri()) {
         // In Tauri environment, read directly from file system
         content = await fs.readTextFile(filePath);
         try {
@@ -535,10 +541,10 @@ class DocumentServiceClass {
     try {
       console.log('Opening file dialog');
       
-      if (isTauri) {
+      if (isTauri()) {
         // In Tauri environment, use native file dialog
-        const { open } = await import('@tauri-apps/api/dialog');
-        const { fs: tauriFs } = await import('@tauri-apps/api');
+        const { open } = await import('@tauri-apps/plugin-dialog');
+        const { readTextFile, writeTextFile, exists } = await import('@tauri-apps/plugin-fs');
         
         // Show file open dialog
         const selected = await open({
@@ -609,9 +615,9 @@ class DocumentServiceClass {
 
   async saveDocumentWithDialog(content: string, defaultName: string = 'untitled.txt'): Promise<string | null> {
     try {
-      if (isTauri) {
+      if (isTauri()) {
         // In Tauri environment, use native save dialog
-        const { save } = await import('@tauri-apps/api/dialog');
+        const { save } = await import('@tauri-apps/plugin-dialog');
         
         // Show save dialog
         const selectedPath = await save({
@@ -663,10 +669,10 @@ class DocumentServiceClass {
     try {
       console.log('Exporting document as', format, 'content length:', content.length, 'filePath:', filePath);
       
-      if (isTauri) {
+      if (isTauri()) {
         // In Tauri, use native dialog for export if no path provided
         if (!filePath) {
-          const { save } = await import('@tauri-apps/api/dialog');
+          const { save } = await import('@tauri-apps/plugin-dialog');
           const selectedPath = await save({
             defaultPath: `export.${format}`,
             filters: [{

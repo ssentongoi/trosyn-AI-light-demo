@@ -13,7 +13,12 @@ import { DocumentListHeader } from './components/DocumentListHeader';
 import { DocumentListTable } from './components/DocumentListTable';
 import { DocumentListEmptyState } from './components/DocumentListEmptyState';
 import { DocumentListLoadingState } from './components/DocumentListLoadingState';
-import { Document, DocumentListProps } from './types/DocumentList.types';
+import type { 
+  Document, 
+  DocumentListProps,
+  DocumentSort,
+  DocumentFilter
+} from './types/DocumentList.types';
 
 const DocumentListComponent: React.FC<DocumentListProps> = ({
   documents = [],
@@ -73,6 +78,16 @@ const DocumentListComponent: React.FC<DocumentListProps> = ({
 }) => {
   const theme = useTheme();
   const [internalViewMode, setInternalViewMode] = useState(externalViewMode);
+  
+  // Handle new folder
+  const handleNewFolder = useCallback(() => {
+    onNewFolder?.();
+  }, [onNewFolder]);
+
+  // Handle upload
+  const handleUpload = useCallback(() => {
+    onUpload?.();
+  }, [onUpload]);
   
   // Use controlled or internal state for view mode
   const viewMode = externalOnViewModeChange ? externalViewMode : internalViewMode;
@@ -201,8 +216,8 @@ const DocumentListComponent: React.FC<DocumentListProps> = ({
   }, [setViewMode]);
   
   // Memoize the empty state component
-  const emptyState = useMemo(() => {
-    if (!showEmptyStateComponent) return null;
+  const emptyStateComponent = useMemo(() => {
+    if (!showEmptyState) return null;
     
     return (
       <DocumentListEmptyState 
@@ -213,7 +228,7 @@ const DocumentListComponent: React.FC<DocumentListProps> = ({
       />
     );
   }, [
-    showEmptyStateComponent,
+    shouldShowEmptyState,
     onUpload,
     onNewFolder,
     filters.search,
@@ -221,7 +236,7 @@ const DocumentListComponent: React.FC<DocumentListProps> = ({
     handleNewFolder,
     i18n
   ]);
-  
+
   // Memoize the table view
   const tableView = useMemo(() => {
     if (viewMode !== 'table') return null;
@@ -234,12 +249,16 @@ const DocumentListComponent: React.FC<DocumentListProps> = ({
         onSortChange={onSortChange || toggleSort}
         onSelect={toggleSelection}
         onSelectAll={selectAll}
-        onStarToggle={onDocumentStar ? handleStarToggle : undefined}
         onDocumentClick={handleDocumentClick}
-        onDocumentContextMenu={handleContextMenu}
-        getDocumentUrl={getDocumentUrl}
-        showCheckbox={showSelectionCheckbox}
+        onDocumentDoubleClick={handleDocumentDoubleClick}
+        onDocumentStar={onDocumentStar || handleStarToggle}
+        onDocumentEdit={onDocumentEdit}
+        onDocumentDelete={onDocumentDelete}
+        onDocumentDownload={onDocumentDownload}
+        onDocumentShare={onDocumentShare}
+        showSelectionCheckbox={showSelectionCheckbox}
         showStarToggle={showStarToggle}
+        getDocumentUrl={getDocumentUrl}
         i18n={i18n}
       />
     );
@@ -255,12 +274,18 @@ const DocumentListComponent: React.FC<DocumentListProps> = ({
     onDocumentStar,
     handleStarToggle,
     handleDocumentClick,
-    handleContextMenu,
-    getDocumentUrl,
+    handleDocumentDoubleClick,
+    onDocumentEdit,
+    onDocumentDelete,
+    onDocumentDownload,
+    onDocumentShare,
     showSelectionCheckbox,
     showStarToggle,
+    getDocumentUrl,
     i18n
   ]);
+  
+  // Memoize the empty state component (already defined above)
   
   // Memoize the status bar
   const statusBar = useMemo(() => {
@@ -290,14 +315,7 @@ const DocumentListComponent: React.FC<DocumentListProps> = ({
     theme.palette.background.default
   ]);
 
-  const handleUpload = useCallback(() => {
-    onUpload?.();
-  }, [onUpload]);
-
-  const handleNewFolder = useCallback(() => {
-    onNewFolder?.();
-  }, [onNewFolder]);
-
+  // Handle new folder
   const handleRefresh = useCallback(() => {
     if (onRefresh) {
       onRefresh();
@@ -346,7 +364,7 @@ const DocumentListComponent: React.FC<DocumentListProps> = ({
   }
 
   // Check if we should show empty state
-  const showEmptyStateComponent = filteredDocuments.length === 0 && 
+  const shouldShowEmptyState = filteredDocuments.length === 0 && 
     (showEmptyState || showNoResultsState);
 
   return (
@@ -368,8 +386,8 @@ const DocumentListComponent: React.FC<DocumentListProps> = ({
 
       {/* Document List */}
       <Box flex={1} overflow="auto" position="relative">
-        {showEmptyStateComponent ? (
-          emptyState
+        {showEmptyState ? (
+          emptyStateComponent
         ) : viewMode === 'table' ? (
           tableView
         ) : (

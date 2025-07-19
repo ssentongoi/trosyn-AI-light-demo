@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { useDropzone } from 'react-dropzone';
+import useDropzone from 'react-dropzone';
 import { useDocumentApi } from '../../contexts/DocumentApiContext';
 import { 
   Box, 

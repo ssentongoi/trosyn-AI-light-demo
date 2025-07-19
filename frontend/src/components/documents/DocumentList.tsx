@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { useDocumentApi } from '../../contexts/DocumentApiContext';
-import { 
+import type { 
   Document, 
-  EnhancedDocument, 
   DocumentFilter, 
-  DocumentSort 
-} from '../../types/document';
+  DocumentSort, 
+  DocumentOwner,
+  DocumentTag,
+  DocumentVersion,
+  DocumentListProps
+} from './types/DocumentList.types';
 import { 
   Box, 
   Button, 
@@ -46,38 +49,6 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import StarIcon from '@mui/icons-material/Star';
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 import DescriptionIcon from '@mui/icons-material/Description';
-
-export interface DocumentListProps {
-  documents?: EnhancedDocument[];
-  loading?: boolean;
-  error?: Error | null;
-  selectedDocuments?: string[];
-  onSelectedDocumentsChange?: (selectedIds: string[]) => void;
-  onDocumentClick?: (document: EnhancedDocument) => void;
-  onDocumentDoubleClick?: (document: EnhancedDocument) => void;
-  onDocumentEdit?: (document: EnhancedDocument) => void;
-  onDocumentDelete?: (documentId: string) => void;
-  onDocumentDownload?: (document: EnhancedDocument) => void;
-  onDocumentShare?: (document: EnhancedDocument) => void;
-  onDocumentStar?: (document: EnhancedDocument, isStarred: boolean) => void;
-  filters?: DocumentFilter;
-  sort?: DocumentSort;
-  onFiltersChange?: (filters: DocumentFilter) => void;
-  onSortChange?: (sort: DocumentSort) => void;
-  page?: number;
-  pageSize?: number;
-  totalItems?: number;
-  onPageChange?: (page: number) => void;
-  onPageSizeChange?: (pageSize: number) => void;
-  showUploadButton?: boolean;
-  showNewFolderButton?: boolean;
-  showToolbar?: boolean;
-  showSearch?: boolean;
-  showFilters?: boolean;
-  showSort?: boolean;
-  showViewToggle?: boolean;
-  showMoreActionsButton?: boolean;
-}
 
 export const DocumentList: React.FC<DocumentListProps> = ({
   documents = [],
@@ -187,10 +158,14 @@ export const DocumentList: React.FC<DocumentListProps> = ({
   };
 
   // Filter documents based on search query
-  const filteredDocuments = documents.filter(doc => 
-    doc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    doc.content?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredDocuments = documents.filter(doc => {
+    const title = doc.title || '';
+    const content = doc.content || '';
+    const query = searchQuery.toLowerCase();
+    
+    return title.toLowerCase().includes(query) ||
+           content.toLowerCase().includes(query);
+  });
 
   if (loading) {
     return (
@@ -260,9 +235,15 @@ export const DocumentList: React.FC<DocumentListProps> = ({
               </TableCell>
               <TableCell>
                 <TableSortLabel
-                  active={sort.field === 'title'}
-                  direction={sort.field === 'title' ? sort.order : 'asc'}
-                  onClick={() => onSortChange?.({ field: 'title', order: sort.order === 'asc' ? 'desc' : 'asc' })}
+                  active={sort.field === 'name' || sort.field === 'title'}
+                  direction={sort.field === 'name' || sort.field === 'title' ? sort.order : 'asc'}
+                  onClick={() => {
+                    const newField: SortableField = 'name';
+                    onSortChange?.({
+                      field: newField,
+                      order: sort.order === 'asc' ? 'desc' : 'asc',
+                    });
+                  }}
                 >
                   Name
                 </TableSortLabel>
@@ -323,7 +304,7 @@ export const DocumentList: React.FC<DocumentListProps> = ({
                 </TableCell>
                 <TableCell>
                   <Typography variant="body2" color="text.secondary">
-                    {formatDistanceToNow(new Date(document.updatedAt), { addSuffix: true })}
+                    {document.updatedAt ? formatDistanceToNow(new Date(document.updatedAt), { addSuffix: true }) : 'N/A'}
                   </Typography>
                 </TableCell>
                 <TableCell>

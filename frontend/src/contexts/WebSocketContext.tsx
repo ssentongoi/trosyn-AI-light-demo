@@ -115,7 +115,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     reconnect,
     disconnect,
     lastError,
-  } = useWebSocket(wsUrl, wsConfig);
+  } = useWebSocketHook(wsUrl, wsConfig);
 
   // Memoize the context value to prevent unnecessary re-renders
   const contextValue = useMemo<WebSocketContextType>(() => ({

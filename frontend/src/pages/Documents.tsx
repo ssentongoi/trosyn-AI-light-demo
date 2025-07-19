@@ -89,12 +89,8 @@ const Documents: React.FC = () => {
   }, [documentApi, filters, sort, page, pageSize, showSnackbar]);
 
   // Handle document selection
-  const handleDocumentSelect = useCallback((documentId: string) => {
-    setSelectedDocuments(prev => 
-      prev.includes(documentId) 
-        ? prev.filter(id => id !== documentId)
-        : [...prev, documentId]
-    );
+  const handleDocumentSelect = useCallback((selectedIds: string[]) => {
+    setSelectedDocuments(selectedIds);
   }, []);
 
   // Handle document double click to open in editor
@@ -233,10 +229,7 @@ const Documents: React.FC = () => {
       
       // Upload each file
       for (const file of files) {
-        const formData = new FormData();
-        formData.append('file', file);
-        
-        await documentApi.uploadDocument(formData);
+        await documentApi.uploadDocument(file);
       }
       
       showSnackbar(`${files.length} file(s) uploaded successfully`, 'success');
@@ -324,7 +317,7 @@ const Documents: React.FC = () => {
           onDocumentDelete={(documentId) => handleDocumentAction('delete', { id: documentId } as Document)}
           onDocumentDownload={(document) => handleDocumentAction('download', document)}
           onDocumentShare={(document) => handleDocumentAction('share', document)}
-          onDocumentStar={(document, isStarred) => handleDocumentAction('star', document)}
+          onDocumentStar={(document, isStarred) => document && handleDocumentAction('star', document)}
           showUploadButton={true}
           showNewFolderButton={false}
           showToolbar={true}
@@ -347,22 +340,22 @@ const Documents: React.FC = () => {
             {
               label: 'Edit',
               icon: <EditIcon />,
-              onClick: (document) => handleDocumentAction('edit', document)
+              onClick: (document) => document && handleDocumentAction('edit', document)
             },
             {
               label: 'Download',
               icon: <DownloadIcon />,
-              onClick: (document) => handleDocumentAction('download', document)
+              onClick: (document) => document && handleDocumentAction('download', document)
             },
             {
               label: 'Share',
               icon: <ShareIcon />,
-              onClick: (document) => handleDocumentAction('share', document)
+              onClick: (document) => document && handleDocumentAction('share', document)
             },
             {
               label: 'Delete',
               icon: <DeleteIcon />,
-              onClick: (document) => handleDocumentAction('delete', document)
+              onClick: (document) => document && handleDocumentAction('delete', document)
             }
           ]}
           emptyState={

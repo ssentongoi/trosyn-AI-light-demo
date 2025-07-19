@@ -46,6 +46,7 @@ const DocumentPagination: React.FC<DocumentPaginationProps> = ({
 
   return (
     <Box
+      data-testid="mock-document-pagination"
       sx={{
         display: 'flex',
         alignItems: 'center',
