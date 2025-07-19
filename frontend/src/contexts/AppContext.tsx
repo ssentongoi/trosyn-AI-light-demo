@@ -22,6 +22,7 @@ export interface AppState {
   sidebarOpen: boolean;
   currentCompany: Company | null;
   companies: Company[];
+  notifications: Notification[];
 }
 
 type AppAction =
@@ -35,7 +36,12 @@ type AppAction =
   | { type: 'TOGGLE_THEME' }
   | { type: 'TOGGLE_SIDEBAR' }
   | { type: 'SET_COMPANY'; payload: Company | null }
-  | { type: 'SET_COMPANIES'; payload: Company[] };
+  | { type: 'SET_COMPANIES'; payload: Company[] }
+  | { type: 'SET_NOTIFICATIONS'; payload: Notification[] }
+  | { type: 'ADD_NOTIFICATION'; payload: Notification }
+  | { type: 'UPDATE_NOTIFICATION'; payload: Notification }
+  | { type: 'DELETE_NOTIFICATION'; payload: string }
+  | { type: 'MARK_ALL_NOTIFICATIONS_READ' };
 
 interface AppContextType extends AppState {
   login: (email: string, password: string) => Promise<void>;
@@ -48,18 +54,23 @@ interface AppContextType extends AppState {
   toggleSidebar: () => void;
   setCurrentCompany: (company: Company | null) => void;
   updateUserPreferences: (preferences: NotificationPreferences) => Promise<void>;
+  loadNotifications: () => Promise<void>;
+  markAsRead: (notificationId: string) => Promise<void>;
+  markAllAsRead: () => Promise<void>;
+  deleteNotification: (notificationId: string) => Promise<void>;
 }
 
 // Initial state
 const initialState: AppState = {
   isAuthenticated: false,
   user: null,
-  loading: true,
+  loading: false,
   error: null,
   theme: 'light',
   sidebarOpen: true,
   currentCompany: null,
   companies: [],
+  notifications: [],
 };
 
 // Create context
@@ -143,6 +154,43 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
         ...state,
         companies: action.payload,
       };
+
+    case 'SET_NOTIFICATIONS':
+      return {
+        ...state,
+        notifications: action.payload,
+      };
+
+    case 'ADD_NOTIFICATION':
+      return {
+        ...state,
+        notifications: [action.payload, ...state.notifications],
+      };
+
+    case 'UPDATE_NOTIFICATION':
+      return {
+        ...state,
+        notifications: state.notifications.map(notification =>
+          notification.id === action.payload.id ? action.payload : notification
+        ),
+      };
+
+    case 'DELETE_NOTIFICATION':
+      return {
+        ...state,
+        notifications: state.notifications.filter(
+          notification => notification.id !== action.payload
+        ),
+      };
+
+    case 'MARK_ALL_NOTIFICATIONS_READ':
+      return {
+        ...state,
+        notifications: state.notifications.map(notification => ({
+          ...notification,
+          read: true,
+        })),
+      };
     
     default:
       return state;
@@ -180,8 +228,14 @@ export const AppProvider: React.FC<AppProviderProps> = ({
           // Initialize notification service with user token
           notificationService.connect(token);
           
-          // Load initial data
-          await loadCompanies();
+          // Load user data on initial render
+          loadUser();
+          loadCompanies();
+          
+          // Load notifications if user is authenticated
+          if (state.isAuthenticated) {
+            loadNotifications();
+          }
         }
       } catch (error) {
         console.error('Error initializing auth:', error);
@@ -194,22 +248,11 @@ export const AppProvider: React.FC<AppProviderProps> = ({
     initAuth();
   }, []);
 
-  // Set up notification listener
+  // Update document title when user changes
   useEffect(() => {
-    if (!state.user) return;
-    
-    // Initialize notification service with user token
-    const token = localStorage.getItem('token');
-    if (token) {
-      notificationService.connect(token);
-    }
-
-    // Cleanup on unmount
-    return () => {
-      notificationService.disconnect();
-    };
+    document.title = state.user ? `Trosyn AI - ${state.user.name}` : 'Trosyn AI';
   }, [state.user]);
-
+  
   // Load companies
   const loadCompanies = async () => {
     try {
@@ -313,6 +356,55 @@ export const AppProvider: React.FC<AppProviderProps> = ({
     }
   };
 
+  // Load notifications from the server
+  const loadNotifications = useCallback(async () => {
+    try {
+      dispatch({ type: 'SET_LOADING', payload: true });
+      const notifications = await notificationService.getNotifications();
+      dispatch({ type: 'SET_NOTIFICATIONS', payload: notifications });
+    } catch (error) {
+      console.error('Failed to load notifications:', error);
+      dispatch({ type: 'SET_ERROR', payload: 'Failed to load notifications' });
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: false });
+    }
+  }, []);
+  
+  // Mark a notification as read
+  const markAsRead = useCallback(async (notificationId: string) => {
+    try {
+      const updatedNotification = await notificationService.markAsRead(notificationId);
+      dispatch({ type: 'UPDATE_NOTIFICATION', payload: updatedNotification });
+    } catch (error) {
+      console.error('Failed to mark notification as read:', error);
+      dispatch({ type: 'SET_ERROR', payload: 'Failed to mark notification as read' });
+    }
+  }, []);
+  
+  // Mark all notifications as read
+  const markAllAsRead = useCallback(async () => {
+    try {
+      const { count } = await notificationService.markAllAsRead();
+      if (count > 0) {
+        dispatch({ type: 'MARK_ALL_NOTIFICATIONS_READ' });
+      }
+    } catch (error) {
+      console.error('Failed to mark all notifications as read:', error);
+      dispatch({ type: 'SET_ERROR', payload: 'Failed to mark all notifications as read' });
+    }
+  }, []);
+  
+  // Delete a notification
+  const deleteNotification = useCallback(async (notificationId: string) => {
+    try {
+      await notificationService.deleteNotification(notificationId);
+      dispatch({ type: 'DELETE_NOTIFICATION', payload: notificationId });
+    } catch (error) {
+      console.error('Failed to delete notification:', error);
+      dispatch({ type: 'SET_ERROR', payload: 'Failed to delete notification' });
+    }
+  }, []);
+
   // Clear error
   const clearError = () => {
     dispatch({ type: 'CLEAR_ERROR' });
@@ -322,15 +414,19 @@ export const AppProvider: React.FC<AppProviderProps> = ({
   const contextValue: AppContextType = {
     ...state,
     login,
+    register,
     logout,
     clearError,
     loadUser,
-    register,
     loadCompanies,
     toggleTheme,
     toggleSidebar,
     setCurrentCompany,
     updateUserPreferences,
+    loadNotifications,
+    markAsRead,
+    markAllAsRead,
+    deleteNotification,
   };
 
   return (

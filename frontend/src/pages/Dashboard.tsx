@@ -83,14 +83,14 @@ const Dashboard: React.FC = () => {
 
   const handleEditDocument = (e: React.MouseEvent, documentId: string) => {
     e.stopPropagation();
-    navigate(`/editor/${documentId}`);
+    navigate(`/documents/${documentId}`);
   };
 
   const quickActions = [
     { 
       title: 'New Document', 
       icon: <AddIcon />, 
-      onClick: () => navigate('/editor') 
+      onClick: () => navigate('/documents/new') 
     },
     { 
       title: 'View All Documents', 

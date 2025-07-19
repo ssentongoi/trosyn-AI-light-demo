@@ -2,15 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { MemoryProvider } from './contexts/MemoryContext';
-import { WebSocketProvider, useWebSocket } from './contexts/WebSocketContext';
+import { WebSocketProvider } from './contexts/WebSocketContext';
+import { useWebSocket } from './hooks/useWebSocketContext';
 import { DocumentProvider } from './contexts/DocumentContext';
 import { TauriProvider, useTauriContext } from './contexts/TauriContext';
+import TestLayout from './components/layout/TestLayout';
 import Layout from './components/layout/Layout';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
-import EditorPage from './pages/EditorPage';
 import Documents from './pages/Documents';
+import TestEditorPage from './pages/TestEditorPage';
 import RecoveryDialog from './components/dialogs/RecoveryDialog';
 import { DocumentService } from './services/DocumentService';
 import { isTauri } from './utils/environment';
@@ -145,7 +147,6 @@ const AppContent: React.FC = () => {
   }
 
     return (
-    <Router>
       <div className="min-h-screen bg-gray-50">
         <WebSocketStatus />
         <RecoveryDialog 
@@ -180,36 +181,44 @@ const AppContent: React.FC = () => {
               </Layout>
             </ProtectedRoute>
           } />
-          <Route path="/editor" element={
+          <Route path="/test-editor" element={
             <ProtectedRoute>
               <Layout>
-                <EditorPage />
+                <TestEditorPage />
               </Layout>
             </ProtectedRoute>
+          } />
+          
+          {/* Development route - remove in production */}
+          <Route path="/dev/editor" element={
+            <TestLayout>
+              <TestEditorPage />
+            </TestLayout>
           } />
           
           {/* Fallback route */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
-    </Router>
   );
 };
 
 // The main App component now only sets up the providers
 const App: React.FC = () => {
   return (
-    <AppProvider>
-      <TauriProvider>
-        <WebSocketProvider>
-          <DocumentProvider>
-            <MemoryProvider>
-              <AppContent />
-            </MemoryProvider>
-          </DocumentProvider>
-        </WebSocketProvider>
-      </TauriProvider>
-    </AppProvider>
+    <Router>
+      <AppProvider>
+        <TauriProvider>
+          <WebSocketProvider>
+            <DocumentProvider>
+              <MemoryProvider>
+                <AppContent />
+              </MemoryProvider>
+            </DocumentProvider>
+          </WebSocketProvider>
+        </TauriProvider>
+      </AppProvider>
+    </Router>
   );
 };
 

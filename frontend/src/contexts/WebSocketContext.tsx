@@ -1,11 +1,12 @@
-import React, { createContext, useContext, useCallback, useMemo, ReactNode } from 'react';
+import React, { createContext, useContext, useMemo, ReactNode, useEffect } from 'react';
 import { useWebSocket as useWebSocketHook } from '../hooks/useWebSocket';
-import { useAuth } from './AuthContext';
+import { useApp } from './AppContext';
 import { AnyWebSocketMessage, WebSocketMessage } from '../types/websocket';
+import notificationService, { NotificationService, WebSocketConnector } from '../services/notification';
 
 type MessageHandler = (message: AnyWebSocketMessage) => void;
 
-interface WebSocketContextType {
+export interface WebSocketContextType {
   isConnected: boolean;
   sendMessage: <T = any>(message: WebSocketMessage<T>) => boolean;
   on: <T = any>(event: string, handler: (message: T) => void) => () => void;
@@ -13,9 +14,10 @@ interface WebSocketContextType {
   disconnect: () => void;
   isConnecting: boolean;
   lastError: Error | null;
+  notificationService: NotificationService;
 }
 
-const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
+export const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
 
 interface WebSocketProviderProps {
   children: ReactNode;
@@ -75,7 +77,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   onDisconnect,
   onError,
 }) => {
-  const { token, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useApp();
   
   // Determine WebSocket URL
   const wsUrl = useMemo(() => {
@@ -117,6 +119,22 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     lastError,
   } = useWebSocketHook(wsUrl, wsConfig);
 
+  // Connect the notification service to the WebSocket
+  useEffect(() => {
+    if (isConnected) {
+      const connector: WebSocketConnector = {
+        sendMessage: sendMessage as <T = any>(message: WebSocketMessage<T>) => boolean,
+        on: on as <T = any>(event: string, handler: (message: T) => void) => () => void,
+      };
+      notificationService.connect(connector);
+    }
+
+    // Cleanup on disconnect or unmount
+    return () => {
+      notificationService.disconnect();
+    };
+  }, [isConnected, sendMessage, on]);
+
   // Memoize the context value to prevent unnecessary re-renders
   const contextValue = useMemo<WebSocketContextType>(() => ({
     isConnected,
@@ -126,6 +144,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     reconnect,
     disconnect,
     lastError,
+    notificationService,
   }), [
     isConnected,
     isConnecting,
@@ -134,6 +153,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     reconnect,
     disconnect,
     lastError,
+    notificationService,
   ]);
 
   return (
@@ -143,15 +163,4 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   );
 };
 
-export const useWebSocketContext = (): WebSocketContextType => {
-  const context = useContext(WebSocketContext);
-  if (context === undefined) {
-    throw new Error('useWebSocketContext must be used within a WebSocketProvider');
-  }
-  return context;
-};
 
-// Export the context and hook
-export { WebSocketContext, useWebSocketContext as useWebSocket };
-
-export default WebSocketContext;

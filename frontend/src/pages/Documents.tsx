@@ -93,19 +93,20 @@ const Documents: React.FC = () => {
     setSelectedDocuments(selectedIds);
   }, []);
 
-  // Handle document double click to open in editor
+  // Handle document double click to view document
   const handleDocumentDoubleClick = useCallback((document: Document) => {
-    navigate(`/editor/${document.id}`);
+    navigate(`/documents/${document.id}`);
   }, [navigate]);
 
   // Handle edit button click
   const handleEditDocument = useCallback((document: Document) => {
-    navigate(`/editor/${document.id}`);
+    // Navigate to document view for editing
+    navigate(`/documents/${document.id}/edit`);
   }, [navigate]);
 
   // Handle new document creation
   const handleNewDocument = useCallback(() => {
-    navigate('/editor');
+    navigate('/documents/new');
   }, [navigate]);
 
   // Handle document click
