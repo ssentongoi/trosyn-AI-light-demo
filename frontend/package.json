@@ -3,9 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@editorjs/checklist": "^1.6.0",
+    "@editorjs/code": "^2.9.3",
     "@editorjs/editorjs": "^2.30.8",
     "@editorjs/header": "^2.8.8",
     "@editorjs/list": "^2.0.8",
+    "@editorjs/paragraph": "^2.11.7",
+    "@editorjs/quote": "^2.7.6",
+    "@editorjs/table": "^2.4.5",
     "@emotion/react": "^11.11.1",
     "@emotion/styled": "^11.11.0",
     "@mui/icons-material": "^5.14.3",
@@ -17,13 +22,16 @@
     "@tauri-apps/plugin-fs": "^2.4.0",
     "@types/date-fns": "^2.5.3",
     "axios": "^1.5.0",
+    "eventemitter3": "^5.0.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.14.2",
     "web-vitals": "^2.1.4"
   },
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --port 3000",
+    "tauri": "tauri",
+    "desktop": "tauri dev",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest",
@@ -34,7 +42,6 @@
     "test:e2e:edge": "node cypress/scripts/run-tests.js --browser=edge",
     "test:e2e:spec": "node cypress/scripts/run-tests.js --spec",
     "test:e2e:open": "cypress open",
-    "tauri": "tauri",
     "lint": "eslint --ext .js,.jsx,.ts,.tsx src",
     "type-check": "tsc --noEmit"
   },
@@ -80,6 +87,7 @@
     "cypress-axe": "^1.6.0",
     "cypress-real-events": "^1.14.0",
     "date-fns": "^4.1.0",
+    "jsdom": "^26.1.0",
     "typescript": "^5.8.3",
     "vite-plugin-checker": "^0.10.0",
     "vitest": "^0.34.6"
