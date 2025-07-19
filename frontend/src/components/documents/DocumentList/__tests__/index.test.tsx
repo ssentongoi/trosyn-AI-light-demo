@@ -12,8 +12,7 @@ vi.mock('../components/DocumentTable', () => ({
 }));
 
 vi.mock('../components/DocumentToolbar', () => ({
-  __esModule: true,
-  default: vi.fn(() => <div data-testid="mock-document-toolbar" />)
+  DocumentToolbar: vi.fn(() => <div data-testid="mock-document-toolbar" />)
 }));
 
 vi.mock('../components/DocumentPagination', () => ({

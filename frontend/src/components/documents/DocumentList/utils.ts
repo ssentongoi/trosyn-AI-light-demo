@@ -47,9 +47,9 @@ export const getMimeTypeCategory = (mimeType: string): string => {
       return 'video';
     case 'application':
       if (mimeType.includes('pdf')) return 'pdf';
-      if (mimeType.includes('word') || mimeType.includes('document')) return 'document';
       if (mimeType.includes('excel') || mimeType.includes('spreadsheet') || mimeType.includes('sheet')) return 'spreadsheet';
       if (mimeType.includes('powerpoint') || mimeType.includes('presentation')) return 'presentation';
+      if (mimeType.includes('word') || mimeType.includes('document')) return 'document';
       if (mimeType.includes('zip') || mimeType.includes('compressed')) return 'archive';
       return 'document';
     default:

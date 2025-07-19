@@ -1,17 +1,197 @@
+// Import testing utilities first
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
-import { vi, describe, beforeEach, it, expect } from 'vitest';
+import { 
+  render, 
+  screen, 
+  waitFor, 
+  act, 
+  fireEvent, 
+  cleanup, 
+  renderHook 
+} from '@testing-library/react';
+import { vi, describe, beforeEach, afterEach, it, expect } from 'vitest';
+
+// Import types
+// Define User type locally since we can't import it
+interface User {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  preferences?: Record<string, any>; // Add preferences as an optional property
+  // Add other user properties as needed
+}
+
+import type { Notification, NotificationPreferences } from '../../services/notification';
+
+// Import the modules
 import { AppProvider, useApp } from '../AppContext';
+import { WebSocketContext } from '../WebSocketContext';
+import AuthContext from '../AuthContext';
+
+// Create a mock AuthContext
+const mockAuthContext = {
+  currentUser: { id: '1', email: 'test@example.com' } as User | null,
+  loading: false,
+  login: vi.fn().mockResolvedValue({ success: true }),
+  logout: vi.fn().mockResolvedValue(undefined),
+  isAuthenticated: true
+};
+
+// Mock the AuthContext with proper typing
+vi.mock('../AuthContext', () => {
+  const mockContextValue = {
+    currentUser: null as User | null,
+    loading: false,
+    login: vi.fn().mockResolvedValue({ success: false }),
+    logout: vi.fn(),
+    isAuthenticated: false
+  };
+  
+  return {
+    __esModule: true,
+    default: {
+      Provider: ({ children, value }: { children: React.ReactNode, value: any }) => (
+        <div data-testid="auth-provider">{children}</div>
+      ),
+      Consumer: ({ children }: { children: (value: any) => React.ReactNode }) => 
+        children(mockContextValue),
+    },
+    useAuth: () => mockContextValue
+  };
+});
+
 import authService from '../../services/auth';
-import notificationService from '../../services/notificationService';
-import type { User } from '../types/auth';
+import notificationService from '../../services/notification';
+
+// Mock the services
+vi.mock('../../services/auth', () => ({
+  __esModule: true,
+  default: {
+    login: vi.fn(),
+    logout: vi.fn(),
+    getCurrentUser: vi.fn(),
+    updateUserPreferences: vi.fn()
+  }
+}));
+
+vi.mock('../../services/notification', () => ({
+  __esModule: true,
+  default: {
+    initialize: vi.fn().mockResolvedValue(undefined),
+    notify: vi.fn(),
+    subscribe: vi.fn(() => () => {}),
+    unsubscribe: vi.fn(),
+    clear: vi.fn(),
+    getNotifications: vi.fn(),
+    markAsRead: vi.fn(),
+    markAllAsRead: vi.fn(),
+    deleteNotification: vi.fn(),
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+    on: vi.fn(),
+    off: vi.fn(),
+    updatePreferences: vi.fn()
+  },
+  NotificationType: { INFO: 'info', WARNING: 'warning', ERROR: 'error' }
+}));
+
+// Create a mock notification service with all required properties
+const createMockNotificationService = (overrides = {}) => {
+  // Create a private emitter for internal use
+  const emitter = {
+    on: vi.fn(),
+    off: vi.fn(),
+    emit: vi.fn()
+  };
+
+  const mockService = {
+    // Core methods
+    initialize: vi.fn().mockResolvedValue(undefined),
+    connect: vi.fn().mockResolvedValue(undefined),
+    disconnect: vi.fn().mockResolvedValue(undefined),
+    notify: vi.fn(),
+    subscribe: vi.fn((event, callback) => {
+      // Return unsubscribe function
+      return () => {};
+    }),
+    unsubscribe: vi.fn(),
+    clear: vi.fn(),
+    clearAll: vi.fn().mockResolvedValue(undefined),
+    getNotifications: vi.fn().mockResolvedValue([]),
+    getUnreadCount: vi.fn().mockResolvedValue(0),
+    getPreferences: vi.fn().mockResolvedValue({}),
+    markAsRead: vi.fn().mockImplementation((id) => 
+      Promise.resolve({ 
+        id, 
+        read: true, 
+        title: 'Test', 
+        message: 'Test', 
+        type: 'info', 
+        createdAt: new Date().toISOString(), 
+        updatedAt: new Date().toISOString() 
+      })
+    ),
+    markAllAsRead: vi.fn().mockResolvedValue({ count: 1 }),
+    deleteNotification: vi.fn().mockResolvedValue(undefined),
+    sendNotification: vi.fn().mockResolvedValue(undefined),
+    testNotification: vi.fn().mockResolvedValue(undefined),
+    getNotificationTypes: vi.fn().mockResolvedValue([]),
+    sendToUsers: vi.fn().mockResolvedValue(undefined),
+    broadcast: vi.fn().mockResolvedValue(undefined),
+    on: vi.fn(),
+    off: vi.fn(),
+    updatePreferences: vi.fn().mockResolvedValue(undefined),
+    
+    // Properties
+    isInitialized: true,
+    isConnected: true,
+    connectionStatus: 'connected',
+    error: null,
+    
+    // Internal properties (not part of the public interface)
+    _emitter: emitter,
+    _ws: {
+      send: vi.fn()
+    },
+    cleanupWs: vi.fn(),
+    handleError: vi.fn()
+  };
+
+  // Apply any overrides
+  Object.assign(mockService, overrides);
+  
+  return mockService;
+};
+
+// Create a mock auth service
+const createMockAuthService = (overrides = {}) => ({
+  login: vi.fn().mockResolvedValue({ token: 'test-token', user: { id: '1', email: 'test@example.com' } }),
+  logout: vi.fn().mockResolvedValue(undefined),
+  getCurrentUser: vi.fn().mockResolvedValue({ id: '1', email: 'test@example.com' }),
+  updateUserPreferences: vi.fn().mockResolvedValue(undefined),
+  ...overrides
+});
+
+// Create instances of the mocks
+const mockAuthService = createMockAuthService();
+const mockNotificationService = createMockNotificationService();
+
+// Apply the mocks
+Object.keys(mockAuthService).forEach((key) => {
+  // @ts-ignore - We know these properties exist
+  authService[key] = mockAuthService[key];
+});
+
+Object.keys(mockNotificationService).forEach((key) => {
+  // @ts-ignore - We know these properties exist
+  notificationService[key] = mockNotificationService[key];
+});
 
 const mockNavigate = vi.fn();
 
-// Mock external modules
-vi.mock('../../services/auth');
-vi.mock('../../services/notificationService');
+// Moved mocks to the top of the file to avoid hoisting issues
+
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom');
   return {
@@ -34,7 +214,8 @@ const mockNotification = {
   message: 'Test message',
   type: 'info',
   read: false,
-  created_at: new Date().toISOString(),
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
 };
 
 const mockEmit = vi.fn();
@@ -75,72 +256,168 @@ const TestComponent = () => {
   );
 };
 
-// Helper to render components within the AppProvider and a MemoryRouter
-const renderWithProviders = (ui: React.ReactElement) => {
-  return render(
-    <MemoryRouter>
-      <AppProvider>{ui}</AppProvider>
-    </MemoryRouter>
+// Mock for WebSocket context
+const createMockWebSocketContext = (overrides = {}) => ({
+  isConnected: true,
+  connectionStatus: 'connected',
+  connect: vi.fn().mockResolvedValue(undefined),
+  disconnect: vi.fn().mockResolvedValue(undefined),
+  send: vi.fn(),
+  sendMessage: vi.fn(),
+  subscribe: vi.fn(),
+  unsubscribe: vi.fn(),
+  on: vi.fn(),
+  off: vi.fn(),
+  reconnect: vi.fn(),
+  isConnecting: false,
+  error: null,
+  lastError: null,
+  ...overrides
+});
+
+// Create a single instance of the mock WebSocket context with all required properties
+const mockWebSocketContext = {
+  ...createMockWebSocketContext(),
+  notificationService: mockNotificationService,
+  lastError: null,
+  isConnecting: false,
+  // Ensure all required WebSocketContextType properties are included
+  on: vi.fn(),
+  off: vi.fn(),
+  reconnect: vi.fn()
+};
+
+// Single TestWrapper component that handles both auth and WebSocket contexts
+const TestWrapper: React.FC<{
+  children: React.ReactNode;
+  initialAuthState?: { isAuthenticated: boolean; user: User | null };
+  onAuthStateChange?: (setter: (state: any) => void) => void;
+}> = ({ 
+  children, 
+  initialAuthState = { isAuthenticated: false, user: null },
+  onAuthStateChange
+}) => {
+  const [authState, setAuthState] = React.useState(initialAuthState);
+  
+  // Simulate authentication state changes
+  React.useEffect(() => {
+    if (onAuthStateChange) {
+      onAuthStateChange((newState) => {
+        setAuthState(newState);
+      });
+    }
+  }, [onAuthStateChange]);
+
+  // Mock auth context value
+  const authContextValue = {
+    currentUser: authState.user,
+    loading: false,
+    login: mockAuthService.login,
+    logout: mockAuthService.logout,
+    isAuthenticated: authState.isAuthenticated
+  };
+
+  // Create a new context value with proper typing
+  const contextValue = React.useMemo(() => {
+    // Create a mock notification service that matches the NotificationService type
+    const notificationService = {
+      ...mockNotificationService,
+      // Private properties are not exposed in the type
+    } as any; // Use type assertion to bypass private property checks
+    
+    return {
+      ...mockWebSocketContext,
+      notificationService
+    };
+  }, []);
+
+  // Create a custom AuthContext provider to avoid type issues
+  const AuthProvider = ({ children, value }: { children: React.ReactNode, value: any }) => {
+    return (
+      <AuthContext.Provider value={value}>
+        {children}
+      </AuthContext.Provider>
+    );
+  };
+
+  return (
+    <WebSocketContext.Provider value={contextValue}>
+      <AuthProvider value={authContextValue}>
+        <AppProvider>
+          {children}
+        </AppProvider>
+      </AuthProvider>
+    </WebSocketContext.Provider>
   );
 };
 
+// Create a custom render function that includes all providers
+const customRender = (ui: React.ReactElement, options: any = {}) => {
+  const { 
+    wrapper: Wrapper = React.Fragment, 
+    initialAuthState = { isAuthenticated: false, user: null },
+    onAuthStateChange,
+    ...restOptions 
+  } = options;
+  
+  return render(ui, {
+    wrapper: ({ children }) => (
+      <TestWrapper 
+        initialAuthState={initialAuthState}
+        onAuthStateChange={onAuthStateChange}
+      >
+        {children}
+      </TestWrapper>
+    ),
+    ...restOptions,
+  });
+};
+
+// Helper to create a WebSocket provider wrapper
+const withWebSocket = (value: any) => 
+  ({ children }: { children: React.ReactNode }) => (
+    <WebSocketContext.Provider value={value}>
+      {children}
+    </WebSocketContext.Provider>
+  );
+
 describe('AppContext', () => {
+  // Test setup and teardown
   beforeEach(() => {
     vi.clearAllMocks();
-
+    // Reset mocks to default implementations
+    mockAuthService.login.mockResolvedValue({ success: true, user: mockUser });
+    mockAuthService.logout.mockResolvedValue({ success: true });
+    mockNotificationService.getNotifications.mockResolvedValue([]);
+    
     // Mock localStorage
     Storage.prototype.setItem = vi.fn();
-    Storage.prototype.removeItem = vi.fn();
     Storage.prototype.getItem = vi.fn();
-
-    // Mock window.matchMedia
-    Object.defineProperty(window, 'matchMedia', {
-      writable: true,
-      value: vi.fn().mockImplementation(query => ({
-        matches: false,
-        media: query,
-        onchange: null,
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-      })),
-    });
-
-    // Mock auth service calls
-    (authService.login as vi.Mock).mockResolvedValue({ token: 'test-token', user: mockUser });
-    (authService.logout as vi.Mock).mockResolvedValue(undefined);
-    (authService.getCurrentUser as vi.Mock).mockResolvedValue(mockUser);
-    
-    // Mock notification service methods
-    (notificationService.connect as vi.Mock).mockImplementation(() => {});
-    (notificationService.getNotifications as vi.Mock).mockResolvedValue([mockNotification]);
-    (notificationService.markAsRead as vi.Mock).mockImplementation((id: string) => {
-      // Simulate marking a notification as read
-      return Promise.resolve();
-    });
-    (notificationService.markAllAsRead as vi.Mock).mockResolvedValue(undefined);
-    (notificationService.deleteNotification as vi.Mock).mockImplementation((id: string) => {
-      // Simulate deleting a notification
-      return Promise.resolve();
-    });
-    (notificationService.subscribe as vi.Mock).mockImplementation((callback) => {
-      // Return a simple unsubscribe function
-      return () => {};
-    });
-    (notificationService.clear as vi.Mock).mockResolvedValue(undefined);
+    Storage.prototype.removeItem = vi.fn();
   });
 
-  it('should render children and provide initial state', () => {
-    renderWithProviders(<TestComponent />);
-    expect(screen.getByTestId('isAuthenticated')).toHaveTextContent('false');
-    expect(screen.getByTestId('username')).toHaveTextContent('null');
-    expect(screen.getByTestId('theme')).toHaveTextContent('light');
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+  });
+
+  it('should render children and provide initial state', async () => {
+    const { unmount } = customRender(<TestComponent />);
+    
+    // Wait for any initial async operations to complete
+    await new Promise(process.nextTick);
+    
+    expect(screen.getByTestId('isAuthenticated').textContent).toBe('false');
+    expect(screen.getByTestId('username').textContent).toBe('null');
+    expect(screen.getByTestId('theme').textContent).toBe('light');
+    
+    // Clean up
+    unmount();
+    await new Promise(process.nextTick);
   });
 
   it('should handle successful login', async () => {
-    renderWithProviders(<TestComponent />);
+    customRender(<TestComponent />);
     
     fireEvent.click(screen.getByText('Login'));
 
@@ -152,13 +429,14 @@ describe('AppContext', () => {
     
     // Wait for state updates to complete
     await waitFor(() => {
-      expect(screen.getByTestId('isAuthenticated')).toHaveTextContent('true');
-      expect(screen.getByTestId('username')).toHaveTextContent('Test User');
-      expect(screen.getByTestId('email')).toHaveTextContent('test@example.com');
+      expect(screen.getByTestId('isAuthenticated').textContent).toBe('true');
+      expect(screen.getByTestId('username').textContent).toBe('Test User');
+      expect(screen.getByTestId('email').textContent).toBe('test@example.com');
     });
   });
+
   it('should handle login and update state', async () => {
-    renderWithProviders(<TestComponent />);
+    customRender(<TestComponent />);
     
     // Click login button
     fireEvent.click(screen.getByText('Login'));
@@ -170,6 +448,7 @@ describe('AppContext', () => {
     
     // Wait for token to be stored
     await waitFor(() => {
+      expect(localStorage.setItem).toHaveBeenCalledTimes(1);
       expect(localStorage.setItem).toHaveBeenCalledWith('token', 'test-token');
     });
     
@@ -187,15 +466,15 @@ describe('AppContext', () => {
       expect(screen.getByTestId('email')).toHaveTextContent('test@example.com');
     });
   });
-  
+
   it('should handle logout', async () => {
     // First log in
-    renderWithProviders(<TestComponent />);
+    customRender(<TestComponent />);
     fireEvent.click(screen.getByText('Login'));
     
     // Wait for login to complete
     await waitFor(() => {
-      expect(screen.getByTestId('isAuthenticated')).toHaveTextContent('true');
+      expect(screen.getByTestId('isAuthenticated').textContent).toBe('true');
     });
     
     // Now log out
@@ -203,7 +482,7 @@ describe('AppContext', () => {
     
     // Wait for logout service to be called
     await waitFor(() => {
-      expect(authService.logout).toHaveBeenCalled();
+      expect(mockAuthService.logout).toHaveBeenCalledTimes(1);
     });
     
     // Wait for token to be removed
@@ -218,100 +497,181 @@ describe('AppContext', () => {
     
     // Wait for user data to be cleared
     await waitFor(() => {
-      expect(screen.getByTestId('username')).toHaveTextContent('null');
+      expect(screen.getByTestId('username').textContent).toBe('null');
     });
   });
-  
+
   it('should load notifications', async () => {
-    renderWithProviders(<TestComponent />);
+    // Set up mock responses
+    const testNotification = { ...mockNotification, id: 'test-notification-1' };
     
-    // Click load notifications button
+    // Mock the login response
+    mockAuthService.login.mockResolvedValueOnce({ 
+      token: 'test-token', 
+      user: mockUser 
+    });
+    
+    // Mock the notifications service
+    mockNotificationService.getNotifications.mockResolvedValueOnce([testNotification]);
+    
+    // Render the component
+    const { rerender } = customRender(<TestComponent />);
+    
+    // Manually trigger login
+    fireEvent.click(screen.getByText('Login'));
+    
+    // Wait for login to complete
+    await waitFor(() => {
+      expect(screen.getByTestId('isAuthenticated').textContent).toBe('true');
+    });
+    
+    // Click the load notifications button
     fireEvent.click(screen.getByText('Load Notifications'));
     
-    // Wait for service to be called
+    // Verify the notifications were loaded
     await waitFor(() => {
-      expect(notificationService.getNotifications).toHaveBeenCalled();
-    });
-    
-    // Wait for notifications to be displayed
-    await waitFor(() => {
-      expect(screen.getByTestId('notification-count')).toHaveTextContent('1');
+      expect(mockNotificationService.getNotifications).toHaveBeenCalled();
+      expect(screen.getByTestId('notification-count').textContent).toBe('1');
     });
   });
-  
+
+  it('should load notifications on mount when authenticated', async () => {
+    // Arrange
+    const testNotifications = [
+      { 
+        id: '1', 
+        message: 'Test notification', 
+        read: false, 
+        createdAt: new Date().toISOString() 
+      }
+    ];
+    
+    // Setup mocks
+    mockNotificationService.getNotifications.mockResolvedValue(testNotifications);
+    
+    // Act
+    const { result } = renderHook(() => useApp(), {
+      wrapper: ({ children }) => (
+        <TestWrapper 
+          initialAuthState={{ 
+            isAuthenticated: true, 
+            user: { ...mockUser, preferences: { notifications: true } } 
+          }}
+        >
+          {children}
+        </TestWrapper>
+      )
+    });
+    
+    // Assert
+    await waitFor(() => {
+      expect(mockNotificationService.getNotifications).toHaveBeenCalled();
+      expect(result.current.notifications).toEqual(testNotifications);
+    });
+  });
+
   it('should mark notification as read', async () => {
-    renderWithProviders(<TestComponent />);
+    // Set up initial state with a notification
+    mockNotificationService.getNotifications.mockResolvedValueOnce([mockNotification]);
+    
+    customRender(<TestComponent />);
     
     // First load notifications
     fireEvent.click(screen.getByText('Load Notifications'));
     
     // Wait for notifications to load
     await waitFor(() => {
-      expect(screen.getByTestId('notification-count')).toHaveTextContent('1');
+      expect(screen.getByTestId('notification-count').textContent).toBe('1');
     });
     
-    // Mark notification as read
+    // Mark as read
     fireEvent.click(screen.getByText('Mark as Read'));
     
     await waitFor(() => {
-      expect(notificationService.markAsRead).toHaveBeenCalledWith('1');
+      expect(mockNotificationService.markAsRead).toHaveBeenCalledWith('1');
     });
   });
   
   it('should mark all notifications as read', async () => {
-    renderWithProviders(<TestComponent />);
+    // Set up initial state with a notification
+    mockNotificationService.getNotifications.mockResolvedValueOnce([mockNotification]);
     
-    // Mark all notifications as read
-    fireEvent.click(screen.getByText('Mark All as Read'));
-    
-    await waitFor(() => {
-      expect(notificationService.markAllAsRead).toHaveBeenCalled();
-    });
-  });
-  
-  it('should delete a notification', async () => {
-    renderWithProviders(<TestComponent />);
+    customRender(<TestComponent />);
     
     // First load notifications
     fireEvent.click(screen.getByText('Load Notifications'));
     
     // Wait for notifications to load
     await waitFor(() => {
-      expect(screen.getByTestId('notification-count')).toHaveTextContent('1');
+      expect(screen.getByTestId('notification-count').textContent).toBe('1');
+    });
+    
+    // Mark all as read
+    fireEvent.click(screen.getByText('Mark All as Read'));
+    
+    await waitFor(() => {
+      expect(mockNotificationService.markAllAsRead).toHaveBeenCalledTimes(1);
+    });
+  });
+  
+  it('should delete a notification', async () => {
+    // Set up initial state with a notification
+    mockNotificationService.getNotifications.mockResolvedValueOnce([mockNotification]);
+    
+    customRender(<TestComponent />);
+    
+    // First load notifications
+    fireEvent.click(screen.getByText('Load Notifications'));
+    
+    // Wait for notifications to load
+    await waitFor(() => {
+      expect(screen.getByTestId('notification-count').textContent).toBe('1');
     });
     
     // Delete notification
     fireEvent.click(screen.getByText('Delete Notification'));
     
     await waitFor(() => {
-      expect(notificationService.deleteNotification).toHaveBeenCalledWith('1');
+      expect(mockNotificationService.deleteNotification).toHaveBeenCalledTimes(1);
+      expect(mockNotificationService.deleteNotification).toHaveBeenCalledWith('1');
     });
   });
   
-  it('should toggle theme', () => {
-    renderWithProviders(<TestComponent />);
+  it('should handle theme toggle', () => {
+    customRender(<TestComponent />);
     
-    // Initial theme is light
-    expect(screen.getByTestId('theme')).toHaveTextContent('light');
+    // Initial theme should be light
+    expect(screen.getByTestId('theme').textContent).toBe('light');
     
     // Toggle to dark
     fireEvent.click(screen.getByText('Toggle Theme'));
-    expect(screen.getByTestId('theme')).toHaveTextContent('dark');
+    expect(screen.getByTestId('theme').textContent).toBe('dark');
     
     // Toggle back to light
     fireEvent.click(screen.getByText('Toggle Theme'));
-    expect(screen.getByTestId('theme')).toHaveTextContent('light');
+    expect(screen.getByTestId('theme').textContent).toBe('light');
   });
   
   it('should handle notification events', async () => {
-    renderWithProviders(<TestComponent />);
+    // Set up the test notification
+    const testNotification = { ...mockNotification, id: 'test-event-1' };
     
-    // Simulate a new notification event
-    mockEmit('notification', mockNotification);
+    // Mock the on method to call the callback immediately
+    const mockCallback = vi.fn();
+    mockNotificationService.on.mockImplementation((event, callback) => {
+      if (event === 'notification') {
+        // Call the callback immediately with our test notification
+        callback(testNotification);
+      }
+      return () => {}; // Return cleanup function
+    });
+    
+    customRender(<TestComponent />);
     
     // The notification should be added to the state
     await waitFor(() => {
-      expect(screen.getByTestId('notification-count')).toHaveTextContent('1');
+      expect(mockNotificationService.on).toHaveBeenCalledWith('notification', expect.any(Function));
+      expect(screen.getByTestId('notification-count').textContent).toBe('1');
     });
   });
 });

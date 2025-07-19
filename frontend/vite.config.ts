@@ -27,7 +27,7 @@ const config = ({ mode }: ConfigEnv): UserConfig => {
     },
     server: {
       port: 3000,
-      open: true,
+      open: false, // Disable automatic browser opening
       strictPort: true,
       // Enable history API fallback for SPA routing
       historyApiFallback: true,

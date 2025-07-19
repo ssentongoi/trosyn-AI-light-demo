@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useApp } from '../contexts/AppContext';
 import { AnyWebSocketMessage, WebSocketMessage } from '../types/websocket';
 
 type MessageHandler<T = AnyWebSocketMessage> = (message: T) => void;
@@ -35,13 +35,14 @@ export const useWebSocket = (url: string, options: WebSocketOptions = {}) => {
     onMessage
   } = options;
 
-  const { token, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useApp();
+  const token = localStorage.getItem('token');
   const ws = useRef<WebSocket | null>(null);
   const isMounted = useRef(true);
   const reconnectAttempts = useRef(0);
-  const reconnectTimeoutRef = useRef<number>();
-  const heartbeatIntervalRef = useRef<number>();
-  const connectionTimeoutRef = useRef<number>();
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messageHandlers = useRef<Map<string, Set<MessageHandler>>>(new Map());
   const lastMessageTime = useRef<number>(0);
 
@@ -81,7 +82,7 @@ export const useWebSocket = (url: string, options: WebSocketOptions = {}) => {
     
     // Start heartbeat
     if (heartbeatInterval > 0) {
-      heartbeatIntervalRef.current = window.setInterval(() => {
+      heartbeatIntervalRef.current = setInterval(() => {
         if (ws.current?.readyState === WebSocket.OPEN) {
           const heartbeatMsg: WebSocketMessage = {
             id: `heartbeat-${Date.now()}`,
@@ -104,7 +105,7 @@ export const useWebSocket = (url: string, options: WebSocketOptions = {}) => {
     // Clear heartbeat
     if (heartbeatIntervalRef.current) {
       clearInterval(heartbeatIntervalRef.current);
-      heartbeatIntervalRef.current = undefined;
+      heartbeatIntervalRef.current = null;
     }
     
     onDisconnect?.(event);
@@ -119,7 +120,7 @@ export const useWebSocket = (url: string, options: WebSocketOptions = {}) => {
           maxReconnectInterval
         );
         
-        reconnectTimeoutRef.current = window.setTimeout(() => {
+        reconnectTimeoutRef.current = setTimeout(() => {
           if (isMounted.current) {
             reconnectAttempts.current = attempt;
             updateState({ reconnectAttempts: attempt });
@@ -209,7 +210,7 @@ export const useWebSocket = (url: string, options: WebSocketOptions = {}) => {
       ws.current.onmessage = handleMessage;
 
       // Set connection timeout
-      connectionTimeoutRef.current = window.setTimeout(() => {
+      connectionTimeoutRef.current = setTimeout(() => {
         if (ws.current?.readyState === WebSocket.CONNECTING) {
           console.warn('WebSocket connection timeout');
           cleanup(1000, 'Connection timeout');
@@ -254,17 +255,17 @@ export const useWebSocket = (url: string, options: WebSocketOptions = {}) => {
     // Clear timeouts and intervals
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = undefined;
+      reconnectTimeoutRef.current = null;
     }
     
     if (heartbeatIntervalRef.current) {
       clearInterval(heartbeatIntervalRef.current);
-      heartbeatIntervalRef.current = undefined;
+      heartbeatIntervalRef.current = null;
     }
     
     if (connectionTimeoutRef.current) {
       clearTimeout(connectionTimeoutRef.current);
-      connectionTimeoutRef.current = undefined;
+      connectionTimeoutRef.current = null;
     }
 
     // Close WebSocket if it exists

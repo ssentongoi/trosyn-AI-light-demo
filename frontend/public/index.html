@@ -1,71 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#000000" />
-  <meta name="description" content="Trosyn AI - Offline-first, self-hosted AI assistant platform" />
-  <title>Trosyn AI</title>
-  <style>
-    #debug-info {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      background: #ffeb3b;
-      color: #000;
-      padding: 10px;
-      font-family: Arial, sans-serif;
-      z-index: 9999;
-      text-align: center;
-    }
-    #debug-info.hidden {
-      display: none;
-    }
-  </style>
-</head>
-<body>
-  <div id="root">
-    <div id="debug-info">
-      <p>HTML loaded successfully. If you see this, the page is being served but React hasn't mounted yet.</p>
-      <p>Check the browser's console for JavaScript errors (F12 > Console)</p>
-    </div>
-  </div>
-  <!-- Vite entry point -->
-  <script type="module" src="/src/main.jsx"></script>
-  </div>
-  <noscript>
-    <div style="background: #ffeb3b; padding: 20px; text-align: center; font-family: Arial, sans-serif;">
-      <h2>JavaScript is disabled</h2>
-      <p>You need to enable JavaScript to run this app.</p>
-    </div>
-  </noscript>
-  <div id="root">
-    <div style="padding: 20px; font-family: Arial, sans-serif; text-align: center;">
-      <h2>React is loading...</h2>
-      <p>If you see this message for more than a few seconds, there might be a JavaScript error.</p>
-      <p>Please check the browser's console (F12 > Console) for errors.</p>
-    </div>
-  </div>
-  
-  <!-- Vite entry point - this is required for Vite to work -->
-  <script type="module" src="/src/main.jsx"></script>
-  <script>
-    // This script will run before React loads
-    console.log('HTML loaded successfully');
-    
-    // Hide debug info when React mounts
-    window.addEventListener('DOMContentLoaded', function() {
-      console.log('DOM fully loaded');
-      var root = document.getElementById('root');
-      var observer = new MutationObserver(function() {
-        if (root.children.length > 1 || (root.textContent && root.textContent.trim() !== 'Loading...')) {
-          document.getElementById('debug-info').classList.add('hidden');
-          observer.disconnect();
-        }
-      });
-      observer.observe(root, { childList: true, subtree: true });
-    });
-  </script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Trosyn AI</title>
+    <meta
+      name="description"
+      content="Trosyn AI - Offline-first, self-hosted AI assistant platform"
+    />
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
 </html>

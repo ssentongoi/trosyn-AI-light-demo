@@ -8,9 +8,6 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
-    "@editorjs/editorjs": "^2.30.8",
-    "@editorjs/header": "^2.8.8",
-    "@editorjs/list": "^2.0.8",
     "react-scripts": "^0.0.0"
   },
   "scripts": {

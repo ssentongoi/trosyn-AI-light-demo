@@ -2,7 +2,7 @@ import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import { useNavigate } from 'react-router-dom';
 import authService from '../services/auth';
-import notificationService, { notificationEmitter } from '../services/notification';
+import notificationService from '../services/notification';
 
 // Initial state
 const initialState = {
