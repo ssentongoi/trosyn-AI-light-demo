@@ -4,21 +4,115 @@
 mod commands;
 mod error;
 
+use std::collections::HashMap;
+use std::sync::Mutex;
+use tauri::Manager;
+use serde::{Deserialize, Serialize};
+use std::fs::{self, File};
+use std::io::{Read, Write};
+use std::path::PathBuf;
+
 use std::sync::Mutex;
 
 
-// Global state for document management
+// Secure storage state
+#[derive(Default, Serialize, Deserialize)]
+struct SecureStorage {
+    store: HashMap<String, String>,
+}
+
+impl SecureStorage {
+    fn new() -> Self {
+        Self {
+            store: HashMap::new(),
+        }
+    }
+
+    fn set(&mut self, key: String, value: String) -> Result<(), String> {
+        self.store.insert(key, value);
+        self.save().map_err(|e| e.to_string())
+    }
+
+    fn get(&self, key: &str) -> Option<String> {
+        self.store.get(key).cloned()
+    }
+
+    fn remove(&mut self, key: &str) -> Result<(), String> {
+        self.store.remove(key);
+        self.save().map_err(|e| e.to_string())
+    }
+
+    fn save(&self) -> std::io::Result<()> {
+        let app_dir = tauri::api::path::app_data_dir(&tauri::Config::default().unwrap())
+            .ok_or_else(|| std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "Could not find app data directory"
+            ))?;
+        
+        std::fs::create_dir_all(&app_dir)?;
+        
+        let path = app_dir.join("secure_store.json");
+        let serialized = serde_json::to_string(&self.store)?;
+        
+        // Encrypt the data before saving (in a real app, use proper encryption)
+        // This is a placeholder - in production, use a proper encryption library
+        fs::write(path, serialized)?;
+        
+        Ok(())
+    }
+
+    fn load() -> Self {
+        let app_dir = match tauri::api::path::app_data_dir(&tauri::Config::default().unwrap()) {
+            Some(dir) => dir,
+            None => return Self::new(),
+        };
+        
+        let path = app_dir.join("secure_store.json");
+        
+        match fs::read_to_string(&path) {
+            Ok(contents) => {
+                // In a real app, decrypt the data here
+                match serde_json::from_str(&contents) {
+                    Ok(store) => Self { store },
+                    Err(_) => Self::new(),
+                }
+            },
+            Err(_) => Self::new(),
+        }
+    }
+}
+
+// Global application state
 struct AppState {
-    // Add any global state here if needed
+    secure_storage: Mutex<SecureStorage>,
+}
+
+// Secure storage commands
+#[tauri::command]
+async fn secure_set(key: String, value: String, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    state.secure_storage.lock().unwrap().set(key, value)
+}
+
+#[tauri::command]
+async fn secure_get(key: String, state: tauri::State<'_, AppState>) -> Result<Option<String>, String> {
+    Ok(state.secure_storage.lock().unwrap().get(&key))
+}
+
+#[tauri::command]
+async fn secure_remove(key: String, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    state.secure_storage.lock().unwrap().remove(&key)
 }
 
 fn main() {
+    // Initialize secure storage
+    let secure_storage = SecureStorage::load();
+    
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
-        .manage(Mutex::new(AppState {
-            // Initialize global state
-        }))
+        .manage(AppState {
+            secure_storage: Mutex::new(secure_storage),
+        })
         .setup(|app| {
             // Initialize recovery system on startup
             if let Err(e) = commands::documents::initialize_recovery() {
@@ -43,6 +137,11 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // Secure storage commands
+            secure_set,
+            secure_get,
+            secure_remove,
+            
             // Document management commands
             commands::documents::save_document,
             commands::documents::auto_save_document,

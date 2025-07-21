@@ -48,8 +48,9 @@ class TauriService {
 
   public async fileExists(path: string): Promise<boolean> {
     if (!this.isTauri) {
-      console.warn('Tauri FS API not available in browser environment');
-      return Promise.resolve(false);
+      const errorMsg = 'Tauri FS API not available in browser environment';
+      console.warn(errorMsg);
+      return Promise.reject(new Error(errorMsg));
     }
     return exists(path);
   }

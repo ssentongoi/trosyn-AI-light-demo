@@ -4,11 +4,21 @@ import { useNavigate } from 'react-router-dom';
 import authService from '../services/auth';
 import notificationService from '../services/notification';
 
-// Initial state
+// Default user object
+const defaultUser = {
+  id: 'local-dev-user',
+  name: 'Local Developer',
+  email: 'dev@localhost',
+  role: 'admin',
+  avatar: '',
+  preferences: {}
+};
+
+// Initial state - always authenticated in development
 const initialState = {
-  isAuthenticated: false,
-  user: null,
-  loading: true,
+  isAuthenticated: true, // Always authenticated
+  user: defaultUser,     // Use default user
+  loading: false,        // No loading state needed
   error: null,
   notifications: [],
   unreadCount: 0,

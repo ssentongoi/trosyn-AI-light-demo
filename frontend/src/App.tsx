@@ -1,45 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './contexts/AuthContext';
 import { AppProvider, useApp } from './contexts/AppContext';
 import { MemoryProvider } from './contexts/MemoryContext';
 import { WebSocketProvider } from './contexts/WebSocketContext';
 import { useWebSocket } from './hooks/useWebSocketContext';
 import { DocumentProvider } from './contexts/DocumentContext';
 import { TauriProvider, useTauriContext } from './contexts/TauriContext';
-import TestLayout from './components/layout/TestLayout';
+
 import Layout from './components/layout/Layout';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Documents from './pages/Documents';
 import TestEditorPage from './pages/TestEditorPage';
+import SimpleEditorTest from './pages/SimpleEditorTest';
+import EditorSandbox from './pages/EditorSandbox';
+
 import RecoveryDialog from './components/dialogs/RecoveryDialog';
 import { DocumentService } from './services/DocumentService';
-import { isTauri } from './utils/environment';
+import { Box, Typography } from '@mui/material';
+
 import './App.css';
 
-// A wrapper for protected routes
+// A wrapper for protected routes - temporarily disabled authentication
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  console.log('ProtectedRoute: Checking authentication...');
-  const { isAuthenticated, loading } = useApp();
-
-  console.log(`ProtectedRoute: isAuthenticated=${isAuthenticated}, loading=${loading}`);
-
-  if (loading) {
-    console.log('ProtectedRoute: Authentication in progress, showing loading...');
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    console.log('ProtectedRoute: Not authenticated, redirecting to /login');
-    return <Navigate to="/login" replace />;
-  }
-
-  console.log('ProtectedRoute: User is authenticated, rendering children');
+  console.log('ProtectedRoute: Authentication temporarily disabled - allowing access');
   return <>{children}</>;
 };
 
@@ -56,41 +42,7 @@ const WebSocketStatus: React.FC = () => {
   );
 };
 
-// Test component to verify Tauri integration
-const TauriTest = () => {
-  const { isTauri, isLoading, error, fileExists } = useTauriContext();
-  const [fileStatus, setFileStatus] = useState<string>('');
 
-  useEffect(() => {
-    const checkFile = async () => {
-      if (isTauri) {
-        try {
-          const exists = await fileExists('.');
-          setFileStatus(`Tauri FS API working: ${exists ? 'Current directory exists' : 'Current directory not found'}`);
-        } catch (err) {
-          setFileStatus(`Tauri FS API error: ${(err as Error).message}`);
-        }
-      }
-    };
-
-    checkFile();
-  }, [isTauri, fileExists]);
-
-  if (isLoading) {
-    return <div className="text-sm text-gray-500">Checking Tauri environment...</div>;
-  }
-
-  return (
-    <div className="p-4 bg-gray-100 rounded-lg mt-4">
-      <h3 className="font-bold mb-2">Tauri Environment Check</h3>
-      <p className="text-sm">Tauri available: <span className={isTauri ? 'text-green-600' : 'text-yellow-600'}>
-        {isTauri ? 'Yes' : 'No (running in browser)'}
-      </span></p>
-      {fileStatus && <p className="text-sm mt-1">{fileStatus}</p>}
-      {error && <p className="text-red-600 text-sm mt-1">Error: {error.message}</p>}
-    </div>
-  );
-};
 
 // Component with the actual app content, which can use the contexts
 const AppContent: React.FC = () => {
@@ -109,10 +61,7 @@ const AppContent: React.FC = () => {
 
   useEffect(() => {
     const checkForRecovery = async () => {
-      if (!isTauri) {
-        setIsCheckingRecovery(false);
-        return;
-      }
+
 
       try {
         const recoveryFiles = await DocumentService.checkForRecoveryFiles();
@@ -170,10 +119,11 @@ const AppContent: React.FC = () => {
           <Route path="/" element={
             <ProtectedRoute>
               <Layout>
-                <div><Dashboard /><TauriTest /></div>
+                <Dashboard />
               </Layout>
             </ProtectedRoute>
           } />
+
           <Route path="/documents" element={
             <ProtectedRoute>
               <Layout>
@@ -184,16 +134,40 @@ const AppContent: React.FC = () => {
           <Route path="/test-editor" element={
             <ProtectedRoute>
               <Layout>
-                <TestEditorPage />
+                {window.__TAURI__ ? (
+                  <TestEditorPage />
+                ) : (
+                  <Box sx={{ p: 3, textAlign: 'center' }}>
+                    <Typography variant="h6" color="error">
+                      This editor is only available in the Tauri desktop application.
+                    </Typography>
+                  </Box>
+                )}
+              </Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="/simple-editor" element={
+            <ProtectedRoute>
+              <Layout>
+                <SimpleEditorTest />
+              </Layout>
+            </ProtectedRoute>
+          } />
+          <Route path="/editor-sandbox" element={
+            <ProtectedRoute>
+              <Layout>
+                <EditorSandbox />
               </Layout>
             </ProtectedRoute>
           } />
           
-          {/* Development route - remove in production */}
+          {/* Development route - bypasses authentication for testing */}
           <Route path="/dev/editor" element={
-            <TestLayout>
-              <TestEditorPage />
-            </TestLayout>
+            <div className="min-h-screen bg-gray-50">
+              <Layout>
+                <TestEditorPage />
+              </Layout>
+            </div>
           } />
           
           {/* Fallback route */}
@@ -207,17 +181,19 @@ const AppContent: React.FC = () => {
 const App: React.FC = () => {
   return (
     <Router>
-      <AppProvider>
+      <AuthProvider>
         <TauriProvider>
-          <WebSocketProvider>
-            <DocumentProvider>
-              <MemoryProvider>
-                <AppContent />
-              </MemoryProvider>
-            </DocumentProvider>
-          </WebSocketProvider>
+          <AppProvider>
+            <MemoryProvider>
+              <WebSocketProvider>
+                <DocumentProvider>
+                  <AppContent />
+                </DocumentProvider>
+              </WebSocketProvider>
+            </MemoryProvider>
+          </AppProvider>
         </TauriProvider>
-      </AppProvider>
+      </AuthProvider>
     </Router>
   );
 };
