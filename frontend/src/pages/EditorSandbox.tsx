@@ -1,112 +1,79 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Box, Container, Typography, Button, Paper, Alert } from '@mui/material';
-import Editor from '../components/editor/Editor';
+import SimpleEditor from '../../editor-sandbox/SimpleEditor';
 
-// Simple isolated sandbox for Editor.js development
-const EditorSandbox = () => {
-  const [content, setContent] = useState(null);
+const EditorSandbox: React.FC = () => {
+  const [savedContent, setSavedContent] = useState<any>(null);
+  const [isReady, setIsReady] = useState(false);
   const [isTauri, setIsTauri] = useState(false);
-  const [error, setError] = useState('');
+  const editorRef = useRef<{ save: () => Promise<any> }>(null);
 
-  // Check if running in Tauri environment
   useEffect(() => {
-    const checkTauri = async () => {
-      try {
-        setIsTauri(window.__TAURI__ !== undefined);
-      } catch (e) {
-        console.error('Error checking Tauri environment:', e);
-        setError('Error initializing Tauri environment');
-      }
-    };
-    checkTauri();
+    // Check if running in Tauri environment
+    // This check is crucial for desktop-only functionality
+    setIsTauri(window.__TAURI__ !== undefined);
   }, []);
 
-  const handleSave = (data) => {
-    console.log('Editor content saved:', data);
-    setContent(data);
+  const handleSave = async () => {
+    if (editorRef.current) {
+      try {
+        const outputData = await editorRef.current.save();
+        console.log('Editor data saved:', outputData);
+        setSavedContent(outputData);
+      } catch (error) {
+        console.error('Error saving editor data:', error);
+      }
+    }
   };
 
-  const handleChange = (data) => {
-    console.log('Editor content changed:', data);
-  };
+  // This effect will run when the editor is ready
+  useEffect(() => {
+    if (isReady) {
+      console.log('Editor is ready!');
+    }
+  }, [isReady]);
 
+  // If not in Tauri environment, display an error message.
   if (!isTauri) {
     return (
       <Container maxWidth="md" sx={{ mt: 4, textAlign: 'center' }}>
         <Alert severity="error" sx={{ mb: 2 }}>
-          This sandbox is only available in the Tauri desktop application.
+          This application is designed for the desktop environment only.
         </Alert>
         <Typography variant="body1">
-          Please open this page in the Tauri app to use the editor sandbox.
+          Please run this application using the Tauri desktop shell.
         </Typography>
       </Container>
     );
   }
 
+  // Render the editor sandbox UI only if in Tauri environment
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
+    <Container maxWidth="lg" sx={{ my: 4 }}>
       <Typography variant="h4" component="h1" gutterBottom>
         Editor.js Sandbox
       </Typography>
-      <Typography variant="subtitle1" color="textSecondary" paragraph>
-        Isolated environment for Editor.js development and testing
-      </Typography>
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {error}
-        </Alert>
+      <Paper elevation={2} sx={{ p: 2, mb: 2, border: '1px solid #ddd' }}>
+        <SimpleEditor
+          ref={editorRef}
+          holder="editor-container-sandbox"
+          onReady={() => setIsReady(true)}
+          placeholder="Let's write an awesome story!"
+        />
+      </Paper>
+      <Box sx={{ display: 'flex', gap: 1 }}>
+        <Button variant="contained" onClick={handleSave} disabled={!isReady}>
+          Save Content
+        </Button>
+      </Box>
+      {savedContent && (
+        <Paper elevation={1} sx={{ p: 2, mt: 3, bgcolor: 'grey.50' }}>
+          <Typography variant="h6">Saved Content:</Typography>
+          <Box component="pre" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', mt: 1 }}>
+            {JSON.stringify(savedContent, null, 2)}
+          </Box>
+        </Paper>
       )}
-
-      <Paper elevation={2} sx={{ p: 3, mb: 4 }}>
-        <Typography variant="h6" gutterBottom>Editor</Typography>
-        <Box sx={{ minHeight: '400px', border: '1px solid #ddd', borderRadius: 1 }}>
-          <Editor 
-            onSave={handleSave}
-            onChange={handleChange}
-            initialData={{
-              time: Date.now(),
-              blocks: [
-                {
-                  type: 'header',
-                  data: {
-                    text: 'Welcome to the Editor.js Sandbox',
-                    level: 2
-                  }
-                },
-                {
-                  type: 'paragraph',
-                  data: {
-                    text: 'This is an isolated environment for developing and testing the Editor.js component.'
-                  }
-                }
-              ]
-            }}
-          />
-        </Box>
-      </Paper>
-
-      <Paper elevation={2} sx={{ p: 3 }}>
-        <Typography variant="h6" gutterBottom>Output</Typography>
-        <Box sx={{ 
-          p: 2, 
-          bgcolor: '#f5f5f5', 
-          borderRadius: 1,
-          minHeight: '200px',
-          maxHeight: '400px',
-          overflow: 'auto',
-          fontFamily: 'monospace',
-          whiteSpace: 'pre-wrap'
-        }}>
-          {content ? (
-            <div>{JSON.stringify(content, null, 2)}</div>
-          ) : (
-            <Typography color="textSecondary">
-              Editor output will appear here when you save
-            </Typography>
-          )}
-        </Box>
-      </Paper>
     </Container>
   );
 };

@@ -1,31 +1,40 @@
 import React from 'react';
+import { AppBar, Toolbar, Button, Box, TextField } from '@mui/material';
 import { Page } from '../types';
 
 interface TopBarProps {
-  selectedPage: Page;
+  page: Page;
+  onTitleChange: (newTitle: string) => void;
+  onSave: () => void;
+  onExport: () => void;
 }
 
-const TopBar = ({ selectedPage }: TopBarProps) => {
+const TopBar: React.FC<TopBarProps> = ({ page, onTitleChange, onSave, onExport }) => {
   return (
-    <div style={{
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      padding: '12px 20px',
-      backgroundColor: '#FFFFFF',
-      borderBottom: '1px solid #E0E0E0',
-      color: '#333',
-      fontFamily: 'sans-serif'
-    }}>
-      <div>
-        <span style={{ cursor: 'pointer', color: '#666' }}>ivanssentongo / </span>
-        <span style={{ cursor: 'pointer' }}>{selectedPage.title}</span>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-        <span style={{ cursor: 'pointer' }}>Share</span>
-        <span style={{ cursor: 'pointer' }}>...</span>
-      </div>
-    </div>
+    <AppBar position="static" color="default" elevation={0} sx={{ backgroundColor: 'white', borderBottom: '1px solid #e0e0e0' }}>
+      <Toolbar>
+        <TextField
+          variant="standard"
+          value={page.title}
+          onChange={(e) => onTitleChange(e.target.value)}
+          sx={{
+            flexGrow: 1,
+            '& .MuiInput-underline:before': { borderBottom: 'none' },
+            '& .MuiInput-underline:hover:not(.Mui-disabled):before': { borderBottom: 'none' },
+            '& .MuiInput-underline:after': { borderBottom: 'none' },
+            '& .MuiInputBase-input': {
+              fontSize: '1.25rem',
+              fontWeight: 'bold',
+            }
+          }}
+        />
+        <Box>
+          <Button color="inherit">Share</Button>
+          <Button color="inherit" onClick={onExport}>Export</Button>
+          <Button variant="contained" onClick={onSave} sx={{ ml: 1 }}>Save</Button>
+        </Box>
+      </Toolbar>
+    </AppBar>
   );
 };
 
