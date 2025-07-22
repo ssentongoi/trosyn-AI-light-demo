@@ -18,7 +18,7 @@ const theme = createTheme({
     fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
   },
 });
-import EditorSandbox from './EditorSandbox';
+import EditorSandbox from './EditorSandbox.tsx';
 
 // Initialize the sandbox
 const container = document.getElementById('editor-root');
