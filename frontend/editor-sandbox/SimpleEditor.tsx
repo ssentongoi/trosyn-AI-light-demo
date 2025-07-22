@@ -60,6 +60,7 @@ export interface EditorInstance {
   focus: () => void;
   destroy: () => Promise<void>;
   isReady: boolean;
+  getSelectedText: () => string;
 }
 
 interface SimpleEditorProps {
@@ -69,6 +70,7 @@ interface SimpleEditorProps {
   onChange?: (data: OutputData) => void;
   onSave?: (data: OutputData) => void;
   onReady?: () => void;
+  onSelectionChange?: (isSelected: boolean) => void;
   readOnly?: boolean;
   autofocus?: boolean;
   minHeight?: number;
@@ -81,6 +83,7 @@ const EditorComponent = forwardRef<EditorInstance, SimpleEditorProps>(({
   onSave,
   onChange,
   onReady,
+  onSelectionChange,
   readOnly = false,
   autofocus = true,
   minHeight = 150,
@@ -89,7 +92,15 @@ const EditorComponent = forwardRef<EditorInstance, SimpleEditorProps>(({
   const editorContainerRef = useRef<HTMLDivElement>(null);
   const [isReady, setIsReady] = useState(false);
   const isMounted = useRef(true);
-  const { theme } = useTheme();
+    const { theme } = useTheme();
+
+      const handleSelection = useCallback(() => {
+    if (onSelectionChange) {
+      const selection = window.getSelection();
+      const isSelected = !!selection && selection.toString().length > 0;
+      onSelectionChange(isSelected);
+    }
+  }, [onSelectionChange]);
 
   // Cleanup function
   const cleanup = useCallback(async () => {
@@ -112,7 +123,11 @@ const EditorComponent = forwardRef<EditorInstance, SimpleEditorProps>(({
   }, [onSave]);
 
   // Expose editor methods via ref
-  useImperativeHandle(ref, () => ({
+      useImperativeHandle(ref, () => ({
+    getSelectedText: () => {
+      const selection = window.getSelection();
+      return selection ? selection.toString() : '';
+    },
     save: async () => {
       if (!editorRef.current) {
         throw new Error('Editor is not initialized');
@@ -159,7 +174,13 @@ const EditorComponent = forwardRef<EditorInstance, SimpleEditorProps>(({
           minHeight,
           readOnly,
           data: initialData,
-          onReady: () => {
+                onReady: () => {
+        const editorHolder = editorContainerRef.current;
+        if (editorHolder) {
+          editorHolder.addEventListener('mouseup', handleSelection);
+          editorHolder.addEventListener('keyup', handleSelection);
+        }
+
             if (!isMounted.current) return;
             setIsReady(true);
             onReady?.();
@@ -239,8 +260,16 @@ const EditorComponent = forwardRef<EditorInstance, SimpleEditorProps>(({
     initEditor();
 
     return () => {
-      isMounted.current = false;
-      cleanup();
+      const editorHolder = editorContainerRef.current;
+      if (editorHolder) {
+        editorHolder.removeEventListener('mouseup', handleSelection);
+        editorHolder.removeEventListener('keyup', handleSelection);
+      }
+
+      if (isMounted.current) {
+        cleanup();
+        isMounted.current = false;
+      }
     };
   }, [holder, placeholder, autofocus, minHeight, readOnly, initialData, onReady, onChange, cleanup]);
 

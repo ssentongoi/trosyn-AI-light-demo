@@ -11,9 +11,30 @@ import styles from '../styles/AIPanel.module.css';
 interface AIPanelProps {
   isOpen: boolean;
   onClose: () => void;
+  isTextSelected: boolean;
+  onAction: (action: string | null, currentTarget?: HTMLElement) => void;
+  onToneSelect: (tone: string) => void;
+  onLanguageSelect: (lang: string) => void;
+  currentAction: string | null;
+  summary: string;
+  isLoading: boolean;
+  rephraseAnchorEl: null | HTMLElement;
+  languageAnchorEl: null | HTMLElement;
 }
 
-const AIPanel: React.FC<AIPanelProps> = ({ isOpen, onClose }) => {
+const AIPanel: React.FC<AIPanelProps> = ({
+  isOpen,
+  onClose,
+  isTextSelected,
+  onAction,
+  onToneSelect,
+  onLanguageSelect,
+  currentAction,
+  summary,
+  isLoading,
+  rephraseAnchorEl,
+  languageAnchorEl,
+}) => {
   const [messages, setMessages] = useState<Message[]>([
     { id: '1', text: 'Hello! How can I help you with this document?', sender: 'ai', timestamp: new Date().toISOString() },
   ]);
@@ -66,7 +87,17 @@ const AIPanel: React.FC<AIPanelProps> = ({ isOpen, onClose }) => {
         onCopy={handleCopy}
         onInsert={handleInsert}
       />
-      <AIFeatureButtons />
+            <AIFeatureButtons
+        isTextSelected={isTextSelected}
+        onAction={onAction}
+        onToneSelect={onToneSelect}
+        onLanguageSelect={onLanguageSelect}
+        currentAction={currentAction}
+        summary={summary}
+        isLoading={isLoading}
+        rephraseAnchorEl={rephraseAnchorEl}
+        languageAnchorEl={languageAnchorEl}
+      />
       <ChatInput onSendMessage={handleSendMessage} />
     </Box>
   );

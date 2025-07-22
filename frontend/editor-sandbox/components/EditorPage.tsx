@@ -10,7 +10,7 @@ import AIActionModal from './AIActionModal';
 import AIPanel from './AIPanel';
 import SimpleEditor, { EditorInstance } from '../SimpleEditor';
 
-import { Page, Message } from '../types';
+import { Page } from '../types';
 
 import styles from '../styles/EditorPage.module.css';
 import '../styles/editor-custom.css';
@@ -50,6 +50,12 @@ const EditorPage: React.FC = () => {
   const [isAIPanelOpen, setIsAIPanelOpen] = useState(false);
   const [aiError, setAIError] = useState<string | null>(null);
   const [lastEdited, setLastEdited] = useState<string | null>(null);
+  const [isTextSelected, setIsTextSelected] = useState(false);
+  const [currentAction, setCurrentAction] = useState<string | null>(null);
+  const [summary, setSummary] = useState<string>('');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [rephraseAnchorEl, setRephraseAnchorEl] = useState<null | HTMLElement>(null);
+  const [languageAnchorEl, setLanguageAnchorEl] = useState<null | HTMLElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -68,6 +74,44 @@ const EditorPage: React.FC = () => {
   }, [editorData]);
 
   const activePage = tabs.find(tab => tab.id === activeTabId);
+
+  const handleSelectionChange = (isSelected: boolean) => {
+    setIsTextSelected(isSelected);
+  };
+
+  const handleAIAction = async (action: string | null, currentTarget?: HTMLElement) => {
+    setCurrentAction(action);
+
+    setRephraseAnchorEl(action === 'rephrase' ? currentTarget || null : null);
+    setLanguageAnchorEl(action === 'translate' ? currentTarget || null : null);
+
+    if (action === 'summarize') {
+      setIsLoading(true);
+      setSummary('');
+      const savedData = await editorRef.current?.save();
+      console.log('Generating summary for:', savedData);
+      setTimeout(() => {
+        setSummary('This is a brief, AI-generated summary of the document content. It highlights the key points and main ideas presented in the text.');
+        setIsLoading(false);
+      }, 1500);
+    } else {
+      setSummary('');
+    }
+
+    if (action) {
+      console.log(`AI Action triggered: ${action}`);
+    }
+  };
+
+  const handleToneSelect = (tone: string) => {
+    const selectedText = editorRef.current?.getSelectedText();
+    console.log(`Rephrasing text: "${selectedText}" with tone: ${tone}`);
+  };
+
+  const handleLanguageSelect = (lang: string) => {
+    const selectedText = editorRef.current?.getSelectedText();
+    console.log(`Translating text: "${selectedText}" to language: ${lang}`);
+  };
 
   const handleAddTab = () => {
     const newTabId = Date.now().toString();
@@ -126,7 +170,7 @@ const EditorPage: React.FC = () => {
     }
   };
 
-    const handleAskAI = () => {
+  const handleAskAI = () => {
     setIsAIPanelOpen(true);
   };
 
@@ -143,19 +187,17 @@ const EditorPage: React.FC = () => {
     const file = event.target.files?.[0];
     if (file) {
       console.log('Selected file:', file.name);
-      // Future: process file content
     }
   };
 
-    const handleToggleComments = () => {
-    // This will be implemented later. For now, it does nothing.
+  const handleToggleComments = () => {
     console.log('Toggle comments clicked');
   };
 
   return (
     <div className={styles.editorPageContainer}>
       <div className={styles.leftPane}>
-        <LeftSidebar 
+        <LeftSidebar
           tabs={tabs}
           activeTabId={activeTabId}
           onAddTab={handleAddTab}
@@ -177,13 +219,14 @@ const EditorPage: React.FC = () => {
               onUpload={handleUpload}
             />
             <Container maxWidth="md" sx={{ flexGrow: 1, paddingTop: '2rem', paddingBottom: '2rem' }}>
-              <SimpleEditor 
-                key={activeTabId} 
+              <SimpleEditor
+                key={activeTabId}
                 ref={editorRef}
+                onSelectionChange={handleSelectionChange}
                 holder={`editor-container-${activePage.id}`}
                 initialData={editorData[activePage.id] || null}
                 onChange={handleEditorChange}
-                placeholder="Start writing your story..." 
+                placeholder="Start writing your story..."
               />
             </Container>
           </>
@@ -194,17 +237,15 @@ const EditorPage: React.FC = () => {
           </Box>
         )}
       </main>
-      
-      
 
-      <AIActionModal 
+      <AIActionModal
         open={isAIModalOpen}
         loading={false}
         onClose={() => setIsAIModalOpen(false)}
         onSelectAction={handleSelectAIAction}
       />
 
-      <Snackbar 
+      <Snackbar
         open={!!aiError}
         autoHideDuration={6000}
         onClose={() => setAIError(null)}
@@ -215,17 +256,26 @@ const EditorPage: React.FC = () => {
         </Alert>
       </Snackbar>
 
+      <AIPanel
+        isOpen={isAIPanelOpen}
+        onClose={() => setIsAIPanelOpen(false)}
+        isTextSelected={isTextSelected}
+        onAction={handleAIAction}
+        onToneSelect={handleToneSelect}
+        onLanguageSelect={handleLanguageSelect}
+        currentAction={currentAction}
+        summary={summary}
+        isLoading={isLoading}
+        rephraseAnchorEl={rephraseAnchorEl}
+        languageAnchorEl={languageAnchorEl}
+      />
+
       <input
         type="file"
         ref={fileInputRef}
         style={{ display: 'none' }}
         onChange={handleFileChange}
         accept=".txt,.md,.docx,.pdf"
-      />
-
-            <AIPanel
-        isOpen={isAIPanelOpen}
-        onClose={() => setIsAIPanelOpen(false)}
       />
     </div>
   );
