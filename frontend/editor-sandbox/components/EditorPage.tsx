@@ -1,16 +1,20 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Box, Container } from '@mui/material';
+import { Box, Container, Typography, Snackbar, Alert } from '@mui/material';
 import { Article as ArticleIcon } from '@mui/icons-material';
+import { OutputData } from '@editorjs/editorjs';
+
 import LeftSidebar from './LeftSidebar';
 import TopBar from './TopBar';
 import AIActionModal from './AIActionModal';
-import { processTextWithAI, getAIChatResponse } from '../services/mockAIService';
 import RightSidebar from './RightSidebar';
-import SimpleEditor, { EditorInstance, OutputData } from '../SimpleEditor';
+import FloatingInfoPanel from './FloatingInfoPanel';
+import SimpleEditor, { EditorInstance } from '../SimpleEditor';
+
+import { processTextWithAI, getAIChatResponse } from '../services/mockAIService';
+import { Page, Message } from '../types';
+
 import styles from '../styles/EditorPage.module.css';
 import '../styles/editor-custom.css';
-import { Page, Message } from '../types';
-import { Snackbar, Alert } from '@mui/material';
 
 // This would typically come from a database or API
 const TABS_STORAGE_KEY = 'editor_tabs';
@@ -39,6 +43,7 @@ const EditorPage: React.FC = () => {
   const [isAILoading, setIsAILoading] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [aiError, setAIError] = useState<string | null>(null);
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
 
   useEffect(() => {
     // Save tabs whenever they change
@@ -59,8 +64,6 @@ const EditorPage: React.FC = () => {
       clearTimeout(handler);
     };
   }, [editorData]);
-
-  
 
   const activePage = tabs.find(tab => tab.id === activeTabId) || tabs[0];
 
@@ -115,7 +118,7 @@ const EditorPage: React.FC = () => {
   };
 
   const handleAskAI = () => {
-    setIsAIModalOpen(true);
+    setIsPanelOpen(true);
   };
 
   const handleSelectAIAction = async (action: string) => {
@@ -169,6 +172,10 @@ const EditorPage: React.FC = () => {
     }
   };
 
+  const showSnackbar = (message: string, severity: 'success' | 'error') => {
+    // Implement snackbar logic here
+  };
+
   return (
     <div className={styles.editorPageContainer}>
       <div className={styles.leftPane}>
@@ -208,13 +215,7 @@ const EditorPage: React.FC = () => {
           </Box>
         )}
       </main>
-      <aside className={styles.rightPane}>
-        <RightSidebar 
-          messages={messages}
-          onSendMessage={handleSendMessage}
-          onSendToEditor={handleSendToEditor}
-        />
-      </aside>
+      
 
       <AIActionModal 
         open={isAIModalOpen}
@@ -222,6 +223,18 @@ const EditorPage: React.FC = () => {
         onClose={() => !isAILoading && setIsAIModalOpen(false)}
         onSelectAction={handleSelectAIAction}
       />
+
+      <FloatingInfoPanel 
+        isOpen={isPanelOpen}
+        onClose={() => setIsPanelOpen(false)}
+        title="AI Assistant"
+      >
+        <RightSidebar 
+          messages={messages}
+          onSendMessage={handleSendMessage}
+          onSendToEditor={handleSendToEditor}
+        />
+      </FloatingInfoPanel>
 
       <Snackbar 
         open={!!aiError}

@@ -57,6 +57,7 @@ const EditorSandbox: React.FC = () => {
       </Typography>
       <Paper elevation={2} sx={{ p: 2, mb: 2, border: '1px solid #ddd' }}>
         <SimpleEditor
+          holder="editor-sandbox-container"
           ref={editorRef}
           onReady={() => setIsReady(true)}
           placeholder="Let's write an awesome story!"

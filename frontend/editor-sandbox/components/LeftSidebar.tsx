@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { isValidElement } from 'react';
 import { Box, Typography, List, ListItem, ListItemButton, ListItemIcon, ListItemText, IconButton, Button, Tooltip } from '@mui/material';
 import { Add as AddIcon, ArrowBack as ArrowBackIcon, Close as CloseIcon, Article as ArticleIcon } from '@mui/icons-material';
 import { useTheme } from '@mui/material/styles';
@@ -6,7 +6,7 @@ import { useTheme } from '@mui/material/styles';
 interface Tab {
   id: string;
   title: string;
-  icon: React.ReactNode;
+  icon?: React.ReactNode;
 }
 
 interface LeftSidebarProps {
@@ -70,7 +70,7 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({ tabs, activeTabId, onAddTab, 
               }}
             >
               <ListItemIcon sx={{ minWidth: 'auto', mr: 1.5, color: 'inherit' }}>
-                {tab.icon || <ArticleIcon fontSize="small" />}
+                {isValidElement(tab.icon) ? tab.icon : <ArticleIcon fontSize="small" />}
               </ListItemIcon>
               <ListItemText 
                 primary={tab.title} 
