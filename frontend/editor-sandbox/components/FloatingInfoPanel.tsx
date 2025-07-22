@@ -1,15 +1,17 @@
 import React from 'react';
 import { Box, IconButton, Paper, Typography } from '@mui/material';
 import { Close as CloseIcon } from '@mui/icons-material';
+import AIToolbar from './AIToolbar';
 
 interface FloatingInfoPanelProps {
   isOpen: boolean;
   onClose: () => void;
   title: string;
   children: React.ReactNode;
+  onActionSelect: (action: string) => void;
 }
 
-const FloatingInfoPanel: React.FC<FloatingInfoPanelProps> = ({ isOpen, onClose, title, children }) => {
+const FloatingInfoPanel: React.FC<FloatingInfoPanelProps> = ({ isOpen, onClose, title, children, onActionSelect }) => {
   if (!isOpen) {
     return null;
   }
@@ -19,11 +21,11 @@ const FloatingInfoPanel: React.FC<FloatingInfoPanelProps> = ({ isOpen, onClose, 
       elevation={4}
       sx={{
         position: 'fixed',
-        top: '70px', // Position below the TopBar
+        top: '70px',
         right: '20px',
         width: '360px',
         height: 'calc(100vh - 90px)',
-        zIndex: 1250, // Above other elements but below modals
+        zIndex: 1250,
         display: 'flex',
         flexDirection: 'column',
         backgroundColor: 'background.paper',
@@ -49,6 +51,7 @@ const FloatingInfoPanel: React.FC<FloatingInfoPanelProps> = ({ isOpen, onClose, 
           <CloseIcon />
         </IconButton>
       </Box>
+      <AIToolbar onActionSelect={onActionSelect} />
       <Box sx={{ flexGrow: 1, p: 2, overflowY: 'auto' }}>
         {children}
       </Box>

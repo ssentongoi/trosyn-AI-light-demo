@@ -228,6 +228,7 @@ const EditorPage: React.FC = () => {
         isOpen={isPanelOpen}
         onClose={() => setIsPanelOpen(false)}
         title="AI Assistant"
+        onActionSelect={handleSelectAIAction}
       >
         <RightSidebar 
           messages={messages}
