@@ -7,8 +7,8 @@ import LeftSidebar from './LeftSidebar';
 import TopBar from './TopBar';
 import AIActionModal from './AIActionModal';
 
-import AIPanel from './AIPanel.tsx';
-import SimpleEditor, { EditorInstance } from '../SimpleEditor.tsx';
+import AIPanel from './AIPanel';
+import SimpleEditor, { EditorInstance } from '../SimpleEditor';
 
 import { Page, Message } from '../types';
 
