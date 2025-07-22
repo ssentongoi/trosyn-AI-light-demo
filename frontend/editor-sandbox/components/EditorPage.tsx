@@ -6,11 +6,10 @@ import { OutputData } from '@editorjs/editorjs';
 import LeftSidebar from './LeftSidebar';
 import TopBar from './TopBar';
 import AIActionModal from './AIActionModal';
-import RightSidebar from './RightSidebar';
-import FloatingInfoPanel from './FloatingInfoPanel';
-import SimpleEditor, { EditorInstance } from '../SimpleEditor';
 
-import { processTextWithAI, getAIChatResponse } from '../services/mockAIService';
+import AIPanel from './AIPanel.tsx';
+import SimpleEditor, { EditorInstance } from '../SimpleEditor.tsx';
+
 import { Page, Message } from '../types';
 
 import styles from '../styles/EditorPage.module.css';
@@ -20,56 +19,59 @@ import '../styles/editor-custom.css';
 const TABS_STORAGE_KEY = 'editor_tabs';
 const DATA_STORAGE_KEY = 'editor_data';
 
-const defaultTabs = [
+const defaultTabs: Page[] = [
   { id: '1', title: 'Getting Started', icon: <ArticleIcon fontSize="small" /> },
 ];
 
 const EditorPage: React.FC = () => {
   const [tabs, setTabs] = useState<Page[]>(() => {
-    const savedTabs = localStorage.getItem(TABS_STORAGE_KEY);
-    const loadedTabs = savedTabs ? JSON.parse(savedTabs) : defaultTabs;
-    return loadedTabs.length > 0 ? loadedTabs : defaultTabs;
+    try {
+      const savedTabs = localStorage.getItem(TABS_STORAGE_KEY);
+      const loaded = savedTabs ? JSON.parse(savedTabs) : defaultTabs;
+      return loaded.length > 0 ? loaded : defaultTabs;
+    } catch {
+      return defaultTabs;
+    }
   });
 
   const [activeTabId, setActiveTabId] = useState<string>(() => tabs[0]?.id || '1');
 
   const [editorData, setEditorData] = useState<Record<string, any>>(() => {
-    const savedData = localStorage.getItem(DATA_STORAGE_KEY);
-    return savedData ? JSON.parse(savedData) : {};
+    try {
+      const savedData = localStorage.getItem(DATA_STORAGE_KEY);
+      return savedData ? JSON.parse(savedData) : {};
+    } catch {
+      return {};
+    }
   });
 
   const editorRef = useRef<EditorInstance>(null);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
-  const [isAILoading, setIsAILoading] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [isAIPanelOpen, setIsAIPanelOpen] = useState(false);
   const [aiError, setAIError] = useState<string | null>(null);
-  const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [lastEdited, setLastEdited] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // Save tabs whenever they change
     localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(tabs));
-    // Update active tab if the current one is deleted
     if (tabs.length > 0 && !tabs.find(t => t.id === activeTabId)) {
       setActiveTabId(tabs[0].id);
     }
   }, [tabs, activeTabId]);
 
   useEffect(() => {
-    // Debounced save for editor data
     const handler = setTimeout(() => {
       localStorage.setItem(DATA_STORAGE_KEY, JSON.stringify(editorData));
     }, 1000);
 
-    return () => {
-      clearTimeout(handler);
-    };
+    return () => clearTimeout(handler);
   }, [editorData]);
 
-  const activePage = tabs.find(tab => tab.id === activeTabId) || tabs[0];
+  const activePage = tabs.find(tab => tab.id === activeTabId);
 
   const handleAddTab = () => {
-    const newTabId = (Date.now()).toString(); // Use a more unique ID
-    const newTab = { id: newTabId, title: `New Page`, icon: <ArticleIcon fontSize="small" /> };
+    const newTabId = Date.now().toString();
+    const newTab: Page = { id: newTabId, title: `New Page`, icon: <ArticleIcon fontSize="small" /> };
     setTabs([...tabs, newTab]);
     setActiveTabId(newTabId);
   };
@@ -99,7 +101,7 @@ const EditorPage: React.FC = () => {
           const newActiveIndex = Math.max(0, tabIndex - 1);
           setActiveTabId(newTabs[newActiveIndex].id);
         } else {
-          setActiveTabId(''); // No tabs left
+          setActiveTabId('');
         }
       }
     }
@@ -113,67 +115,41 @@ const EditorPage: React.FC = () => {
     if (editorRef.current && activeTabId) {
       const savedData = await editorRef.current.save();
       setEditorData(prevData => ({ ...prevData, [activeTabId]: savedData }));
-      console.log('Content for tab', activeTabId, 'saved:', savedData);
-    }
-  };
-
-  const handleAskAI = () => {
-    setIsPanelOpen(true);
-  };
-
-  const handleSelectAIAction = async (action: string) => {
-    if (!editorRef.current || !activeTabId) return;
-
-    setIsAILoading(true);
-    try {
-      const content = await editorRef.current.save();
-      const processedContent = await processTextWithAI(action, content);
-      await editorRef.current.render(processedContent);
-    } catch (error) { 
-      console.error('Error processing AI action:', error);
-      if (error instanceof Error) {
-        setAIError(error.message);
-      }
-    } finally {
-      setIsAILoading(false);
-      setIsAIModalOpen(false);
-    }
-  };
-
-  const handleSendMessage = async (text: string) => {
-    try {
-    const userMessage: Message = { id: Date.now().toString(), sender: 'user', text };
-    setMessages(prev => [...prev, userMessage]);
-
-    const aiResponseText = await getAIChatResponse(text);
-    const aiMessage: Message = { id: (Date.now() + 1).toString(), sender: 'ai', text: aiResponseText };
-    setMessages(prev => [...prev, aiMessage]);
-    } catch (error) {
-      console.error('Error getting AI chat response:', error);
-      if (error instanceof Error) {
-        setAIError(error.message);
-      }
+      setLastEdited(new Date().toISOString());
+      console.log('Content saved');
     }
   };
 
   const handleEditorChange = (data: OutputData) => {
-    // Only save if there is content to prevent overwriting with empty data
     if (data.blocks.length > 0) {
-      setEditorData(prevData => ({
-        ...prevData,
-        [activeTabId]: data,
-      }));
+      setEditorData(prevData => ({ ...prevData, [activeTabId]: data }));
     }
   };
 
-  const handleSendToEditor = (text: string) => {
-    if (editorRef.current) {
-      editorRef.current.insertBlock('paragraph', { text });
+    const handleAskAI = () => {
+    setIsAIPanelOpen(true);
+  };
+
+  const handleSelectAIAction = (action: string) => {
+    console.log(`AI action selected: ${action}`);
+    setIsAIModalOpen(false);
+  };
+
+  const handleUpload = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      console.log('Selected file:', file.name);
+      // Future: process file content
     }
   };
 
-  const showSnackbar = (message: string, severity: 'success' | 'error') => {
-    // Implement snackbar logic here
+    const handleToggleComments = () => {
+    // This will be implemented later. For now, it does nothing.
+    console.log('Toggle comments clicked');
   };
 
   return (
@@ -191,11 +167,14 @@ const EditorPage: React.FC = () => {
         {activePage ? (
           <>
             <TopBar
-              page={activePage as Page}
+              page={activePage}
               onTitleChange={handleTitleChange}
               onSave={handleSave}
               onExport={() => console.log('Export clicked')}
               onAskAI={handleAskAI}
+              lastEdited={lastEdited}
+              onToggleComments={handleToggleComments}
+              onUpload={handleUpload}
             />
             <Container maxWidth="md" sx={{ flexGrow: 1, paddingTop: '2rem', paddingBottom: '2rem' }}>
               <SimpleEditor 
@@ -216,26 +195,14 @@ const EditorPage: React.FC = () => {
         )}
       </main>
       
+      
 
       <AIActionModal 
         open={isAIModalOpen}
-        loading={isAILoading}
-        onClose={() => !isAILoading && setIsAIModalOpen(false)}
+        loading={false}
+        onClose={() => setIsAIModalOpen(false)}
         onSelectAction={handleSelectAIAction}
       />
-
-      <FloatingInfoPanel 
-        isOpen={isPanelOpen}
-        onClose={() => setIsPanelOpen(false)}
-        title="AI Assistant"
-        onActionSelect={handleSelectAIAction}
-      >
-        <RightSidebar 
-          messages={messages}
-          onSendMessage={handleSendMessage}
-          onSendToEditor={handleSendToEditor}
-        />
-      </FloatingInfoPanel>
 
       <Snackbar 
         open={!!aiError}
@@ -247,6 +214,19 @@ const EditorPage: React.FC = () => {
           {aiError}
         </Alert>
       </Snackbar>
+
+      <input
+        type="file"
+        ref={fileInputRef}
+        style={{ display: 'none' }}
+        onChange={handleFileChange}
+        accept=".txt,.md,.docx,.pdf"
+      />
+
+            <AIPanel
+        isOpen={isAIPanelOpen}
+        onClose={() => setIsAIPanelOpen(false)}
+      />
     </div>
   );
 };
