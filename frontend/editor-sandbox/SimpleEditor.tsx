@@ -45,8 +45,6 @@ import Underline from '@editorjs/underline';
 import LinkTool from '@editorjs/link';
 
 // Import components
-import FloatingActionPopup from './components/FloatingActionPopup';
-import { useSelectionPopup } from './hooks/useSelectionPopup';
 import { useTheme } from './context/ThemeContext';
 
 // Type for editor actions
@@ -57,89 +55,44 @@ type EditorAction =
 export interface EditorInstance {
   save: () => Promise<OutputData>;
   clear: () => void;
-  isReady: boolean;
+  render: (data: OutputData) => Promise<void>;
+  insertBlock: (type: string, data: any) => void;
   focus: () => void;
   destroy: () => Promise<void>;
+  isReady: boolean;
 }
 
 interface SimpleEditorProps {
+  holder: string;
+  initialData?: any;
   placeholder?: string;
-  onSave?: (data: OutputData) => void;
   onChange?: (data: OutputData) => void;
+  onSave?: (data: OutputData) => void;
   onReady?: () => void;
-  initialData?: OutputData;
   readOnly?: boolean;
   autofocus?: boolean;
   minHeight?: number;
 }
 
 const EditorComponent = forwardRef<EditorInstance, SimpleEditorProps>(({
+  holder,
+  initialData,
   placeholder = 'Type something...',
   onSave,
   onChange,
   onReady,
-  initialData,
   readOnly = false,
   autofocus = true,
   minHeight = 150,
 }, ref) => {
   const editorRef = useRef<EditorJS | null>(null);
   const editorContainerRef = useRef<HTMLDivElement>(null);
-  const holderId = useMemo(() => `editor-${Math.random().toString(36).substr(2, 9)}`, []);
   const [isReady, setIsReady] = useState(false);
   const isMounted = useRef(true);
   const { theme } = useTheme();
 
-  // Handle editor actions
-  const handleAction = useCallback(async (action: string) => {
-    if (!editorRef.current) return;
-
-    try {
-      if (action.startsWith('format:')) {
-        const format = action.split(':')[1] as EditorAction;
-        
-        // Handle inline formatting
-        if (['bold', 'italic', 'underline', 'strikethrough', 'code'].includes(format)) {
-          document.execCommand(format, false);
-          return;
-        }
-        
-        // Handle block formatting
-        if (['h1', 'h2', 'h3', 'ul', 'ol', 'todo', 'quote', 'codeblock'].includes(format)) {
-          const blockIndex = await editorRef.current.blocks.getCurrentBlockIndex();
-          if (blockIndex !== -1) {
-            const currentBlock = await editorRef.current.blocks.getBlockByIndex(blockIndex);
-            
-            if (currentBlock && isExtendedBlock(currentBlock)) {
-              // Type-safe access to block data
-              const blockText = currentBlock.data?.text || '';
-              const blockType = format === 'codeblock' ? 'code' : format;
-              
-              await editorRef.current.blocks.update(currentBlock.id, {
-                type: blockType,
-                data: { text: blockText }
-              });
-            }
-          }
-        }
-      } else {
-        // Handle other actions
-        console.log('Action:', action);
-        // TODO: Implement action handlers
-      }
-    } catch (error) {
-      console.error('Error handling editor action:', error);
-    }
-  }, []);
-
-  // Setup selection popup
-  const { selection, isVisible, onAction: onPopupAction, onClose } = useSelectionPopup({
-    editorRef: editorContainerRef,
-    onAction: handleAction,
-  });
-
   // Cleanup function
-    const cleanup = useCallback(async () => {
+  const cleanup = useCallback(async () => {
     const editor = editorRef.current;
     // Check if the instance and its destroy method exist
     if (editor && typeof editor.destroy === 'function') {
@@ -173,6 +126,19 @@ const EditorComponent = forwardRef<EditorInstance, SimpleEditorProps>(({
     clear: () => {
       editorRef.current?.clear();
     },
+    render: (data: OutputData) => {
+      if (!editorRef.current) {
+        throw new Error('Editor is not initialized');
+      }
+      return editorRef.current.render(data);
+    },
+    insertBlock: (type: string, data: any) => {
+      if (!editorRef.current) {
+        throw new Error('Editor is not initialized');
+      }
+      const index = editorRef.current.blocks.getCurrentBlockIndex();
+      editorRef.current.blocks.insert(type, data, {}, index + 1, true);
+    },
     focus: () => {
       editorRef.current?.focus();
     },
@@ -187,7 +153,7 @@ const EditorComponent = forwardRef<EditorInstance, SimpleEditorProps>(({
     const initEditor = async () => {
       try {
         const editorConfig: EditorConfig = {
-          holder: holderId,
+          holder: holder,
           placeholder,
           autofocus,
           minHeight,
@@ -221,7 +187,7 @@ const EditorComponent = forwardRef<EditorInstance, SimpleEditorProps>(({
               class: Paragraph as unknown as BlockToolConstructable,
               inlineToolbar: ['bold', 'italic', 'underline', 'link', 'marker'],
               config: {
-                placeholder: 'Start writing...',
+                placeholder: placeholder || 'Let\'s write an awesome story!',
               },
             },
             list: {
@@ -276,7 +242,7 @@ const EditorComponent = forwardRef<EditorInstance, SimpleEditorProps>(({
       isMounted.current = false;
       cleanup();
     };
-  }, [holderId, placeholder, autofocus, minHeight, readOnly, initialData, onReady, onChange, cleanup]);
+  }, [holder, placeholder, autofocus, minHeight, readOnly, initialData, onReady, onChange, cleanup]);
 
   // Handle prop changes
   useEffect(() => {
@@ -299,24 +265,38 @@ const EditorComponent = forwardRef<EditorInstance, SimpleEditorProps>(({
       style={editorStyles}
     >
       <div 
-        id={holderId} 
+        id={holder} 
         style={editorStyles} 
       />
-      {isVisible && selection instanceof Selection && selection.rangeCount > 0 && (
-        <FloatingActionPopup
-          selection={selection}
-          onAction={onPopupAction}
-          onClose={onClose}
-        />
-      )}
     </div>
   );
 });
 
 EditorComponent.displayName = 'EditorComponent';
 
-const SimpleEditor = forwardRef<EditorInstance, SimpleEditorProps>((props, ref) => {
-  return <EditorComponent {...props} ref={ref} />;
+const SimpleEditor = forwardRef<EditorInstance, SimpleEditorProps>(({
+  holder,
+  initialData,
+  placeholder,
+  onChange,
+  onSave,
+  onReady,
+  readOnly,
+  autofocus,
+  minHeight,
+}, ref) => {
+  return <EditorComponent 
+    holder={holder} 
+    initialData={initialData} 
+    placeholder={placeholder} 
+    onChange={onChange} 
+    onSave={onSave} 
+    onReady={onReady} 
+    readOnly={readOnly} 
+    autofocus={autofocus} 
+    minHeight={minHeight} 
+    ref={ref} 
+  />;
 });
 
 SimpleEditor.displayName = 'SimpleEditor';

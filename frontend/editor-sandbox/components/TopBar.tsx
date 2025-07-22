@@ -7,9 +7,10 @@ interface TopBarProps {
   onTitleChange: (newTitle: string) => void;
   onSave: () => void;
   onExport: () => void;
+  onAskAI: () => void;
 }
 
-const TopBar: React.FC<TopBarProps> = ({ page, onTitleChange, onSave, onExport }) => {
+const TopBar: React.FC<TopBarProps> = ({ page, onTitleChange, onSave, onExport, onAskAI }) => {
   return (
     <AppBar position="static" color="default" elevation={0} sx={{ backgroundColor: 'white', borderBottom: '1px solid #e0e0e0' }}>
       <Toolbar>
@@ -31,7 +32,8 @@ const TopBar: React.FC<TopBarProps> = ({ page, onTitleChange, onSave, onExport }
         <Box>
           <Button color="inherit">Share</Button>
           <Button color="inherit" onClick={onExport}>Export</Button>
-          <Button variant="contained" onClick={onSave} sx={{ ml: 1 }}>Save</Button>
+          <Button variant="contained" onClick={onAskAI} sx={{ ml: 1 }}>Ask AI</Button>
+          <Button variant="contained" color="primary" onClick={onSave} sx={{ ml: 1 }}>Save</Button>
         </Box>
       </Toolbar>
     </AppBar>

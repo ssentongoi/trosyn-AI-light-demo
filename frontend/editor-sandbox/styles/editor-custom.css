@@ -1,0 +1,66 @@
+/*
+ * Custom Editor.js Styles
+ * -------------------------
+ * This file contains styles to override the default Editor.js theme
+ * and create a more focused, Notion-like writing experience.
+ */
+
+.codex-editor__redactor {
+  padding-bottom: 100px !important; /* Add space at the bottom */
+}
+
+/* Constrain the width of the content for better readability */
+.ce-block__content {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+/* General typography for paragraphs */
+.ce-paragraph {
+  font-size: 1.1rem;
+  line-height: 1.7;
+  letter-spacing: -0.003em;
+}
+
+/* Heading styles */
+.ce-header {
+  font-family: 'Georgia', serif; /* A more classic, book-like font for headings */
+  font-weight: 600;
+}
+
+.ce-header[data-level="1"] {
+  font-size: 2.5rem;
+  margin-top: 2em;
+  margin-bottom: 1em;
+}
+
+.ce-header[data-level="2"] {
+  font-size: 2rem;
+  margin-top: 1.8em;
+  margin-bottom: 0.8em;
+}
+
+.ce-header[data-level="3"] {
+  font-size: 1.5rem;
+  margin-top: 1.5em;
+  margin-bottom: 0.6em;
+}
+
+/* Link styles */
+.cdx-link {
+  color: #3b82f6; /* A nice blue */
+  text-decoration: none;
+  border-bottom: 1px solid rgba(59, 130, 246, 0.4);
+}
+
+.cdx-link:hover {
+  border-bottom-color: #3b82f6;
+}
+
+/* Quote styles */
+.ce-quote {
+  border-left: 3px solid #d1d5db; /* A subtle gray border */
+  padding-left: 1rem;
+  font-style: italic;
+  color: #4b5563;
+}

@@ -1,7 +1,13 @@
 export interface Page {
   id: string;
   title: string;
-  icon: string;
+  icon?: React.ReactNode;
+}
+
+export interface Message {
+  id: string;
+  sender: 'user' | 'ai';
+  text: string;
 }
 
 export interface Pages {

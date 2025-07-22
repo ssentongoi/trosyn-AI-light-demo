@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Box, Container, Typography, Button, Paper, Alert } from '@mui/material';
-import SimpleEditor from '../../editor-sandbox/SimpleEditor';
+import SimpleEditor, { EditorInstance } from '../../editor-sandbox/SimpleEditor';
+import ThemeWrapper from '../../editor-sandbox/components/ThemeWrapper';
 
 const EditorSandbox: React.FC = () => {
   const [savedContent, setSavedContent] = useState<any>(null);
   const [isReady, setIsReady] = useState(false);
   const [isTauri, setIsTauri] = useState(false);
-  const editorRef = useRef<{ save: () => Promise<any> }>(null);
+  const editorRef = useRef<EditorInstance>(null);
 
   useEffect(() => {
     // Check if running in Tauri environment
@@ -49,6 +50,7 @@ const EditorSandbox: React.FC = () => {
 
   // Render the editor sandbox UI only if in Tauri environment
   return (
+    <ThemeWrapper>
     <Container maxWidth="lg" sx={{ my: 4 }}>
       <Typography variant="h4" component="h1" gutterBottom>
         Editor.js Sandbox
@@ -56,7 +58,6 @@ const EditorSandbox: React.FC = () => {
       <Paper elevation={2} sx={{ p: 2, mb: 2, border: '1px solid #ddd' }}>
         <SimpleEditor
           ref={editorRef}
-          holder="editor-container-sandbox"
           onReady={() => setIsReady(true)}
           placeholder="Let's write an awesome story!"
         />
@@ -75,6 +76,7 @@ const EditorSandbox: React.FC = () => {
         </Paper>
       )}
     </Container>
+    </ThemeWrapper>
   );
 };
 

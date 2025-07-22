@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base styles for the editor */
+.ce-block__content,
+.ce-toolbar__content {
+  max-width: 100% !important;
+}
+
+/* Dark theme overrides */
+.dark .ce-block__content,
+.dark .ce-toolbar__content {
+  color: #f3f4f6;
+}
+
+.dark .ce-block--selected .ce-block__content {
+  background-color: rgba(55, 65, 81, 0.3);
+}
+
+/* Floating action popup styles */
+.floating-popup {
+  @apply fixed z-50 p-2 rounded-lg shadow-lg flex flex-col gap-2 w-64 transition-all duration-200 ease-in-out;
+  background-color: var(--bg-color, #ffffff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  transform: translate(-50%, -100%) translateY(-8px);
+}
+
+/* Toolbar button styles */
+.toolbar-button {
+  @apply flex items-center justify-center w-8 h-8 rounded hover:bg-opacity-20 transition-colors;
+}
+
+/* Text styles for the editor */
+.ce-header {
+  @apply font-bold my-4;
+}
+
+h1.ce-header {
+  @apply text-3xl;
+}
+
+h2.ce-header {
+  @apply text-2xl;
+}
+
+h3.ce-header {
+  @apply text-xl;
+}
+
+/* Custom scrollbar for the editor */
+.codex-editor {
+  scrollbar-width: thin;
+  scrollbar-color: #9ca3af #e5e7eb;
+}
+
+.codex-editor::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.codex-editor::-webkit-scrollbar-track {
+  background: #e5e7eb;
+  border-radius: 4px;
+}
+
+.codex-editor::-webkit-scrollbar-thumb {
+  background-color: #9ca3af;
+  border-radius: 4px;
+}
+
+.dark .codex-editor {
+  scrollbar-color: #4b5563 #1f2937;
+}
+
+.dark .codex-editor::-webkit-scrollbar-track {
+  background: #1f2937;
+}
+
+.dark .codex-editor::-webkit-scrollbar-thumb {
+  background-color: #4b5563;
+}

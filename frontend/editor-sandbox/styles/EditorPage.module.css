@@ -1,0 +1,31 @@
+.editorPageContainer {
+  display: flex;
+  flex-direction: row;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
+}
+
+.leftPane {
+  width: 260px;
+  flex-shrink: 0;
+  height: 100%;
+  overflow-y: auto;
+  border-right: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.centerPane {
+  flex-grow: 1;
+  padding: 0 24px;
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.rightPane {
+  width: 320px;
+  flex-shrink: 0;
+  display: none; /* Hidden for now, will be toggled later */
+  border-left: 1px solid rgba(0, 0, 0, 0.12);
+}
