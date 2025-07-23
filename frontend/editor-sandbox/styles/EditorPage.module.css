@@ -26,6 +26,7 @@
 .rightPane {
   width: 320px;
   flex-shrink: 0;
-  display: none; /* Hidden for now, will be toggled later */
+  display: flex;
+  flex-direction: column;
   border-left: 1px solid rgba(0, 0, 0, 0.12);
 }

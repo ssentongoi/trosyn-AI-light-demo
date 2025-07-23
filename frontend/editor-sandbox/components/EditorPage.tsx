@@ -256,19 +256,23 @@ const EditorPage: React.FC = () => {
         </Alert>
       </Snackbar>
 
-      <AIPanel
-        isOpen={isAIPanelOpen}
-        onClose={() => setIsAIPanelOpen(false)}
-        isTextSelected={isTextSelected}
-        onAction={handleAIAction}
-        onToneSelect={handleToneSelect}
-        onLanguageSelect={handleLanguageSelect}
-        currentAction={currentAction}
-        summary={summary}
-        isLoading={isLoading}
-        rephraseAnchorEl={rephraseAnchorEl}
-        languageAnchorEl={languageAnchorEl}
-      />
+      {isAIPanelOpen && (
+        <div className={styles.rightPane}>
+          <AIPanel
+            isOpen={isAIPanelOpen}
+            onClose={() => setIsAIPanelOpen(false)}
+            isTextSelected={isTextSelected}
+            onAction={handleAIAction}
+            onToneSelect={handleToneSelect}
+            onLanguageSelect={handleLanguageSelect}
+            currentAction={currentAction}
+            summary={summary}
+            isLoading={isLoading}
+            rephraseAnchorEl={rephraseAnchorEl}
+            languageAnchorEl={languageAnchorEl}
+          />
+        </div>
+      )}
 
       <input
         type="file"

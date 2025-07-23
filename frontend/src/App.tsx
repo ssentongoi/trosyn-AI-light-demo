@@ -1,4 +1,5 @@
 import React from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { AppProvider } from './contexts/AppContext';
 import { MemoryProvider } from './contexts/MemoryContext';
@@ -12,25 +13,6 @@ import './App.css';
 // The main App component now only sets up the providers and renders the sandbox
 const App: React.FC = () => {
   return (
-    <AuthProvider>
-      <TauriProvider>
-        <AppProvider>
-          <MemoryProvider>
-            <WebSocketProvider>
-              <DocumentProvider>
-                <EditorSandbox />
-              </DocumentProvider>
-            </WebSocketProvider>
-          </MemoryProvider>
-        </AppProvider>
-      </TauriProvider>
-    </AuthProvider>
-  );
-};
-
-// The main App component now only sets up the providers
-const App: React.FC = () => {
-  return (
     <Router>
       <AuthProvider>
         <TauriProvider>
@@ -38,7 +20,9 @@ const App: React.FC = () => {
             <MemoryProvider>
               <WebSocketProvider>
                 <DocumentProvider>
-                  <AppContent />
+                  <Routes>
+                    <Route path="/" element={<EditorSandbox />} />
+                  </Routes>
                 </DocumentProvider>
               </WebSocketProvider>
             </MemoryProvider>

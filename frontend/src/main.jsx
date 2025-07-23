@@ -34,7 +34,9 @@ const handleGlobalError = (event) => {
     }
   };
   
-  showTauriDialog();
+  if (window.__TAURI__) {
+    showTauriDialog();
+  }
   return false;
 };
 
@@ -69,8 +71,12 @@ const initializeTauri = async () => {
   }
 };
 
-// Initialize Tauri in non-blocking way
-initializeTauri().catch(console.error);
+// Initialize Tauri only if in a Tauri environment
+if (window.__TAURI__) {
+  initializeTauri().catch(console.error);
+} else {
+  console.log('Tauri environment not detected, skipping Tauri initialization.');
+}
 
 // Development mode setup
 if (process.env.NODE_ENV === 'development') {
