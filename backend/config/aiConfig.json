@@ -1,0 +1,65 @@
+{
+  "mode": "production",
+  "features": {
+    "summarization": {
+      "enabled": true,
+      "maxLength": 5000,
+      "defaultLanguage": "en",
+      "maxTokens": 1000,
+      "temperature": 0.3
+    },
+    "redaction": {
+      "enabled": true,
+      "redactionTypes": [
+        "pii",
+        "sensitive",
+        "financial"
+      ],
+      "replacement": "[REDACTED]",
+      "temperature": 0.1
+    },
+    "spellcheck": {
+      "enabled": true,
+      "defaultLanguage": "en-US",
+      "suggestionCount": 3,
+      "temperature": 0.3
+    }
+  },
+  "models": {
+    "default": "gemma-3n",
+    "available": [
+      "mock",
+      "gemma-3n"
+    ],
+    "gemma-3n": {
+      "status": "error",
+      "path": "../../shared_data/models/gemma3n/model.gguf",
+      "format": "gguf",
+      "maxTokens": 4096,
+      "temperature": 0.7,
+      "topP": 0.9,
+      "topK": 50,
+      "doSample": true,
+      "device": "cpu",
+      "quantized": true
+    },
+    "mock": {
+      "status": "ready",
+      "description": "Mock implementation for testing"
+    }
+  },
+  "rateLimiting": {
+    "enabled": true,
+    "requestsPerMinute": 60,
+    "maxConcurrent": 5
+  },
+  "caching": {
+    "enabled": true,
+    "ttl": 3600,
+    "strategy": "lru",
+    "maxSize": 1000
+  },
+  "version": "1.1.0",
+  "lastUpdated": "2025-07-24T00:00:00Z",
+  "environment": "production"
+}
