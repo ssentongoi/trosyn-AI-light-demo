@@ -45,62 +45,68 @@ class MockLlamaService implements IMockLlamaService {
     return Promise.resolve('mock summary');
   }
   
-  async redact(_text: string, sensitiveInfo: string[] = []): Promise<string> {
-    // Return a mock redacted text that contains [REDACTED] placeholders
-    return Promise.resolve('This is a test text containing sensitive information like [REDACTED] and [REDACTED].');
+  async redact(_text: string): Promise<string> {
+    return Promise.resolve('mock [REDACTED] text');
   }
-
+  
   async spellcheck(_text: string): Promise<SpellcheckResult> {
     return Promise.resolve({
-      original: _text,
-      corrected: _text,
+      original: 'mock text with error',
+      corrected: 'mock text with error',
       corrections: []
     });
   }
 }
 
-// Export the mock service
 export const mockLlamaService = new MockLlamaService();
 
-// Type for mock response
+// Simplified mock response type
 type MockResponse = {
   status: jest.Mock;
   json: jest.Mock;
   send: jest.Mock;
   setHeader: jest.Mock;
   get: jest.Mock;
-  headers: Record<string, any>;
   body?: any;
+  headers: Record<string, any>;
+  statusCode?: number;
 };
 
-// Create a mock response
-export const createMockResponse = (): Partial<Response> => {
-  const mockResponse: Partial<MockResponse> = {
-    headers: {},
-  };
-
-  mockResponse.status = jest.fn(() => mockResponse as any);
+// Create a proper mock response
+export const createMockResponse = (): MockResponse => {
+  const mockResponse: any = {};
   
+  // Initialize properties
+  mockResponse.body = undefined;
+  mockResponse.headers = {};
+  mockResponse.statusCode = 200;
+
+  // Create mock functions with proper typing
+  mockResponse.status = jest.fn((code: number) => {
+    mockResponse.statusCode = code;
+    return mockResponse;
+  });
+
   mockResponse.json = jest.fn((body: any) => {
     mockResponse.body = body;
-    return mockResponse as any;
+    return mockResponse;
   });
 
   mockResponse.send = jest.fn((body?: any) => {
     mockResponse.body = body;
-    return mockResponse as any;
+    return mockResponse;
   });
 
   mockResponse.setHeader = jest.fn((name: string, value: any) => {
-    mockResponse.headers![name] = value;
-    return mockResponse as any;
+    mockResponse.headers[name] = value;
+    return mockResponse;
   });
 
   mockResponse.get = jest.fn((name: string) => {
-    return mockResponse.headers![name];
+    return mockResponse.headers[name];
   });
 
-  return mockResponse as Partial<Response>;
+  return mockResponse as MockResponse;
 };
 
 // Simplified mock request type
@@ -131,7 +137,7 @@ export const createMockRequest = (
 
 // Helper to wait for promises to resolve
 export const flushPromises = (): Promise<void> => 
-  new Promise(jest.requireActual('timers').setImmediate);
+  new Promise(resolve => process.nextTick(resolve));
 
 // Helper to test error handling
 export const expectAsyncError = async (

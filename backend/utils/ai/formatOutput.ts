@@ -1,5 +1,9 @@
-import { truncateText, countTokens } from './textHelpers.js';
-import config from '../../config/aiConfig.json' with { type: 'json' };
+import { truncateText, countTokens } from '@utils/ai/textHelpers.js';
+import { join } from 'path';
+import { readFileSync } from 'fs';
+
+const configPath = join(process.cwd(), 'config/aiConfig.json');
+const config = JSON.parse(readFileSync(configPath, 'utf-8'));
 
 type SummaryOptions = {
   maxLength?: number;
@@ -81,8 +85,8 @@ export const formatSummaryOutput = (
     // Simple bullet point formatting
     formatted = formatted
       .split('. ')
-      .filter(s => s.trim().length > 0)
-      .map(s => `- ${s.trim().replace(/\.$/, '')}`)
+      .filter((s: string) => s.trim().length > 0)
+      .map((s: string) => `- ${s.trim().replace(/\.$/, '')}`)
       .join('\n');
   }
   

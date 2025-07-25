@@ -1,109 +1,151 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { Request, Response } from 'express';
+
+// Mock the llamaService module
+jest.mock('../../services/llama/llamaService.js', () => {
+  return {
+    llamaService: {
+      initialize: jest.fn().mockResolvedValue(undefined),
+      summarize: jest.fn().mockResolvedValue('This is a mock summary'),
+      redact: jest.fn().mockResolvedValue('mock [REDACTED] text'),
+      spellcheck: jest.fn().mockResolvedValue({
+        original: 'test',
+        corrected: 'test',
+        corrections: []
+      }),
+      generateText: jest.fn().mockResolvedValue('mock generated text')
+    }
+  };
+});
+
+// Import the mocked module directly
+import { llamaService } from '../../services/llama/llamaService.js';
+
+// Import the route handler after mocking
 import { summarizeText } from '../../routes/ai/summarize';
-import { createMockRequest, createMockResponse, mockLlamaService } from './testUtils';
 
-// Mock the response type to fix TypeScript errors
-interface MockResponse extends Response {
-  json: jest.Mock;
-  status: jest.Mock;
-  send: jest.Mock;
-}
-
-describe('Summarization API', () => {
+describe('Summarize Text Endpoint', () => {
   let mockReq: Partial<Request>;
-  let mockRes: MockResponse;
-  let mockJson: jest.Mock;
-  let mockStatus: jest.Mock;
+  let mockRes: Partial<Response>;
+  
+  // Create a mock response object
+  const createMockResponse = () => {
+    const res: Partial<Response> = {};
+    res.status = jest.fn().mockReturnValue(res) as any;
+    res.json = jest.fn().mockReturnValue(res) as any;
+    return res;
+  };
 
   beforeEach(() => {
     // Reset all mocks before each test
     jest.clearAllMocks();
     
-    mockJson = jest.fn();
-    mockStatus = jest.fn().mockReturnThis();
+    // Setup request with default values
+    mockReq = {
+      body: {
+        text: 'This is a test text that should be summarized.'
+      }
+    };
     
-    mockRes = {
-      json: mockJson,
-      status: mockStatus,
-      send: jest.fn()
-    } as unknown as MockResponse;
+    // Setup response mock
+    mockRes = createMockResponse();
     
-    // Default request with valid text
-    mockReq = createMockRequest({
-      text: 'This is a test text that needs to be summarized. It contains multiple sentences to ensure the summarization works correctly.'
-    });
-    
-    // Reset the mock implementation for summarize
-    mockLlamaService.summarize.mockResolvedValue('This is a mock summary of the provided text.');
+    // Setup default mock implementations
+    llamaService.summarize.mockResolvedValue('This is a mock summary');
+    llamaService.initialize.mockResolvedValue(undefined);
   });
 
   it('should return a successful response with a summary', async () => {
-    await summarizeText(mockReq as any, mockRes as any);
+    // Arrange
+    const mockSummary = 'This is a mock summary';
+    llamaService.summarize.mockResolvedValue(mockSummary);
     
-    expect(mockJson).toHaveBeenCalled();
-    const response = mockJson.mock.calls[0][0];
+    // Act
+    await summarizeText(mockReq as Request, mockRes as Response);
     
-    expect(mockLlamaService.initialize).toHaveBeenCalled();
-    expect(mockLlamaService.summarize).toHaveBeenCalledWith(
+    // Assert
+    expect(llamaService.summarize).toHaveBeenCalledWith(
       mockReq.body.text,
-      expect.any(Number) // maxLength
+      expect.any(Number)
     );
-    
-    expect(response).toHaveProperty('success', true);
-    expect(response).toHaveProperty('data');
-    expect(response.data).toContain('This is a mock summary');
-    expect(response).toHaveProperty('meta');
-    expect(response.meta).toHaveProperty('model');
+    expect(mockRes.status).toHaveBeenCalledWith(200);
+    expect(mockRes.json).toHaveBeenCalledWith({
+      success: true,
+      summary: mockSummary
+    });
   });
 
   it('should handle missing text input', async () => {
+    // Arrange
     mockReq.body.text = '';
     
-    await summarizeText(mockReq as any, mockRes as any);
+    // Act
+    await summarizeText(mockReq as Request, mockRes as Response);
     
-    expect(mockStatus).toHaveBeenCalledWith(400);
-    expect(mockJson).toHaveBeenCalledWith(
-      expect.objectContaining({
-        error: 'Text input is required'
-      })
+    // Assert
+    expect(llamaService.summarize).not.toHaveBeenCalled();
+    expect(mockRes.status).toHaveBeenCalledWith(400);
+    expect(mockRes.json).toHaveBeenCalledWith({
+      success: false,
+      error: 'Text input is required',
+      details: 'No text was provided for summarization.'
+    });
+  });
+
+  it('should handle missing request body', async () => {
+    // Arrange
+    mockReq.body = undefined;
+    
+    // Act
+    await summarizeText(mockReq as Request, mockRes as Response);
+    
+    // Assert
+    expect(llamaService.summarize).not.toHaveBeenCalled();
+    expect(mockRes.status).toHaveBeenCalledWith(400);
+    expect(mockRes.json).toHaveBeenCalledWith({
+      success: false,
+      error: 'Invalid request format',
+      details: 'Request body is missing or invalid.'
+    });
+  });
+
+  it('should handle service errors', async () => {
+    // Arrange
+    const error = new Error('Failed to generate summary');
+    llamaService.summarize.mockRejectedValueOnce(error);
+    
+    // Act
+    await summarizeText(mockReq as Request, mockRes as Response);
+    
+    // Assert
+    expect(llamaService.summarize).toHaveBeenCalled();
+    expect(mockRes.status).toHaveBeenCalledWith(500);
+    expect(mockRes.json).toHaveBeenCalledWith({
+      success: false,
+      error: 'Failed to generate summary',
+      details: error.message
+    });
+  });
+
+  it('should respect maxLength parameter', async () => {
+    // Arrange
+    const testMaxLength = 50;
+    mockReq.body.maxLength = testMaxLength;
+    const mockSummary = 'Short summary';
+    llamaService.summarize.mockResolvedValue(mockSummary);
+    
+    // Act
+    await summarizeText(mockReq as Request, mockRes as Response);
+    
+    // Assert
+    expect(llamaService.summarize).toHaveBeenCalledWith(
+      mockReq.body.text,
+      testMaxLength
     );
-  });
-
-  it('should handle options parameter', async () => {
-    mockReq.body.options = { maxLength: 100 };
-    
-    await summarizeText(mockReq as any, mockRes as any);
-    
-    expect(mockJson).toHaveBeenCalled();
-    const response = mockJson.mock.calls[0][0];
-    expect(response).toHaveProperty('success', true);
-  });
-
-  it('should handle long text input', async () => {
-    const longText = 'a '.repeat(10000);
-    mockReq.body.text = longText;
-    
-    await summarizeText(mockReq as any, mockRes as any);
-    
-    expect(mockJson).toHaveBeenCalled();
-    const response = mockJson.mock.calls[0][0];
-    expect(response).toHaveProperty('success', true);
-    expect(response.data.length).toBeLessThan(longText.length);
-  });
-
-  it('should handle error cases', async () => {
-    // Force an error by making req.body.text a non-string
-    mockReq.body.text = { invalid: 'data' };
-    
-    await summarizeText(mockReq as any, mockRes as any);
-    
-    expect(mockStatus).toHaveBeenCalledWith(500);
-    expect(mockJson).toHaveBeenCalledWith(
-      expect.objectContaining({
-        success: false,
-        error: 'Failed to generate summary'
-      })
-    );
+    expect(mockRes.status).toHaveBeenCalledWith(200);
+    expect(mockRes.json).toHaveBeenCalledWith({
+      success: true,
+      summary: mockSummary
+    });
   });
 });

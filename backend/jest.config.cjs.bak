@@ -1,0 +1,30 @@
+// Minimal Jest configuration for ESM + TypeScript
+module.exports = {
+  preset: 'ts-jest/presets/default-esm',
+  testEnvironment: 'node',
+  extensionsToTreatAsEsm: ['.ts'],
+
+  // Transform TypeScript via ts-jest (ESM) and JS/JSX via babel-jest to handle node-fetch ESM
+  transform: {
+    '^.+\\.ts$': ['ts-jest', { useESM: true }],
+    '^.+\\.[tj]sx?$': 'babel-jest',
+  },
+
+  // Only transform specific ESM-only packages in node_modules
+  transformIgnorePatterns: [
+    '/node_modules/(?!(node-fetch|fetch-blob|data-uri-to-buffer|formdata-polyfill)/)'
+  ],
+
+  // Map .js imports to their .ts source and handle relative paths
+  moduleNameMapper: {
+    '^(\.{1,2}/.*)\.js$': '$1',
+    '^@routes/(.*)\.js$': '<rootDir>/routes/$1.ts',
+    '^@services/(.*)\.js$': '<rootDir>/services/$1.ts',
+    '^@utils/(.*)\.js$': '<rootDir>/utils/$1.ts',
+    '^@tests/(.*)\.js$': '<rootDir>/tests/$1.ts',
+    '^@config/(.*)\.js$': '<rootDir>/config/$1.ts',
+    '^(\..*/.*)\.js$': '$1',
+  },
+
+  setupFilesAfterEnv: ['<rootDir>/tests/jest.setup.ts'],
+};

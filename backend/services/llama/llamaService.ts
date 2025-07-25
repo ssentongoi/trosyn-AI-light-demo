@@ -1,136 +1,180 @@
-import { LlamaModel, LlamaContext, LlamaChatSession } from 'node-llama-cpp';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
+import { LlamaClient } from './llamaClient.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// Configuration for the LLM service
+const DEFAULT_CONFIG = {
+  serverUrl: process.env.LLAMA_SERVER_URL || 'http://localhost:8080/completion',
+  timeout: 120000, // 2 minutes
+} as const;
 
-// Path to the GGUF model file
-const MODEL_PATH = path.join(
-  __dirname,
-  '../../../shared_data/models/gemma3n/model.gguf'
-);
+export interface SpellcheckResult {
+  original: string;
+  corrected: string;
+  corrections: Array<{ original: string; corrected: string }>;
+}
 
 class LlamaService {
-  private model: LlamaModel | null = null;
-  private context: LlamaContext | null = null;
-  private session: LlamaChatSession | null = null;
+  private client: LlamaClient;
   private isInitialized: boolean = false;
 
+  constructor(config: { serverUrl?: string; timeout?: number } = {}) {
+    this.client = new LlamaClient(
+      config.serverUrl || DEFAULT_CONFIG.serverUrl,
+      config.timeout || DEFAULT_CONFIG.timeout
+    );
+  }
+
   /**
-   * Initialize the Llama model and context
+   * Initialize the Llama service
    */
-  async initialize() {
+  async initialize(): Promise<void> {
     if (this.isInitialized) return;
-
+    
     try {
-      console.log('Loading Llama model from:', MODEL_PATH);
-      
-      this.model = new LlamaModel({
-        modelPath: MODEL_PATH,
-        gpuLayers: 0, // 0 for CPU-only
-        contextSize: 2048, // Adjust based on your needs
-        batchSize: 512, // Adjust based on your system's capabilities
+      // Test the connection to the LLM server
+      await this.client.complete({
+        prompt: 'Hello',
+        n_predict: 5,
+        temperature: 0.7,
       });
-
-      this.context = await this.model.createContext();
-      this.session = new LlamaChatSession({ context: this.context });
-      this.isInitialized = true;
       
-      console.log('Llama model loaded successfully');
+      this.isInitialized = true;
+      console.log('LlamaService initialized successfully');
     } catch (error) {
-      console.error('Failed to initialize Llama model:', error);
-      throw new Error(`Failed to initialize Llama model: ${error.message}`);
+      console.error('Failed to initialize LlamaService:', error);
+      throw error;
     }
   }
 
   /**
-   * Generate text using the Llama model
-   * @param prompt The prompt to generate text from
-   * @param maxTokens Maximum number of tokens to generate
-   * @param temperature Controls randomness (0.0 to 1.0)
-   * @returns Generated text
+   * Generate text using the LLM
    */
   async generateText(
     prompt: string,
-    maxTokens: number = 500,
+    maxTokens: number = 100,
     temperature: number = 0.7
   ): Promise<string> {
-    if (!this.isInitialized || !this.session) {
-      throw new Error('Llama model is not initialized. Call initialize() first.');
+    if (!this.isInitialized) {
+      throw new Error('LlamaService not initialized. Call initialize() first.');
     }
 
     try {
-      const response = await this.session.prompt(prompt, {
-        maxTokens,
+      const response = await this.client.complete({
+        prompt,
+        n_predict: maxTokens,
         temperature,
-        onToken: (tokens) => {
-          // Optional: Handle token streaming
-          process.stdout.write(tokens.map(t => t.content).join(''));
-        },
       });
 
-      return response;
+      return response.content;
     } catch (error) {
       console.error('Error generating text:', error);
-      throw new Error(`Failed to generate text: ${error.message}`);
+      throw new Error(`Failed to generate text: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   /**
-   * Summarize text using the Llama model
-   * @param text The text to summarize
-   * @param maxLength Maximum length of the summary
-   * @returns A summary of the input text
+   * Summarize the given text
    */
-  async summarize(text: string, maxLength: number = 150): Promise<string> {
-    const prompt = `Please provide a concise summary of the following text in ${maxLength} words or less. Focus on the main points and key information:\n\n${text}\n\nSummary:`;
-    return this.generateText(prompt, 300, 0.5); // Lower temperature for more focused summaries
-  }
-
-  /**
-   * Redact sensitive information from text
-   * @param text The text to redact
-   * @returns The redacted text
-   */
-  async redact(text: string): Promise<string> {
-    const prompt = `Please redact or remove any sensitive personal information from the following text, replacing it with [REDACTED]. This includes names, addresses, phone numbers, email addresses, ID numbers, and any other personally identifiable information. Return only the redacted text with no additional commentary.\n\nText to redact:\n${text}\n\nRedacted text:`;
-    return this.generateText(prompt, text.length * 2, 0.1); // Very low temperature for precise redaction
-  }
-
-  /**
-   * Check and correct spelling and grammar in text
-   * @param text The text to check
-   * @returns The corrected text
-   */
-  async spellcheck(text: string): Promise<{original: string; corrected: string; corrections: Array<{original: string; corrected: string;}>}> {
-    const prompt = `Please analyze the following text for spelling and grammatical errors. Return a JSON object with the following structure:
-    {
-      "original": "the original text",
-      "corrected": "the corrected text with all errors fixed",
-      "corrections": [
-        {
-          "original": "incorrect word or phrase",
-          "corrected": "suggested correction"
-        }
-      ]
+  async summarize(
+    text: string,
+    maxLength: number = 100
+  ): Promise<string> {
+    if (!text || text.trim().length === 0) {
+      return '';
     }
-    \nText to analyze:\n${text}\n\n`;
 
-    const response = await this.generateText(prompt, 1000, 0.3);
+    const prompt = `Please summarize the following text in ${maxLength} words or less:\n\n${text}`;
     
     try {
-      // Try to parse the response as JSON
-      const parsed = JSON.parse(response);
+      return await this.generateText(prompt, maxLength, 0.3);
+    } catch (error) {
+      console.error('Error summarizing text:', error);
+      // Fallback to simple truncation
+      return text.length > maxLength 
+        ? text.substring(0, maxLength) + '...' 
+        : text;
+    }
+  }
+
+  /**
+   * Redact sensitive information from the text
+   */
+  async redact(
+    text: string,
+    sensitiveInfo: string[] = []
+  ): Promise<string> {
+    if (!text || text.trim().length === 0) {
+      return '';
+    }
+
+    if (sensitiveInfo.length === 0) {
+      return text; // Nothing to redact
+    }
+
+    const prompt = `Please redact the following sensitive information from the text: ${sensitiveInfo.join(', ')}. ` +
+                  `Replace each occurrence with [REDACTED]. Here's the text:\n\n${text}`;
+    
+    try {
+      return await this.generateText(prompt, text.length * 2, 0.1);
+    } catch (error) {
+      console.error('Error redacting text:', error);
+      // Fallback to simple replacement
+      let result = text;
+      sensitiveInfo.forEach(info => {
+        const regex = new RegExp(escapeRegExp(info), 'gi');
+        result = result.replace(regex, '[REDACTED]');
+      });
+      return result;
+    }
+  }
+
+  /**
+   * Check and correct spelling in the given text
+   */
+  async spellcheck(
+    text: string
+  ): Promise<SpellcheckResult> {
+    if (!text || text.trim().length === 0) {
       return {
-        original: parsed.original || text,
-        corrected: parsed.corrected || text,
-        corrections: parsed.corrections || []
+        original: text,
+        corrected: text,
+        corrections: []
       };
-    } catch (e) {
-      // If JSON parsing fails, return the original text with a note
-      console.warn('Failed to parse spellcheck response as JSON, returning original text');
+    }
+
+    const prompt = `Please correct any spelling or grammar errors in the following text. ` +
+                  `Return a JSON object with the original text, corrected text, ` +
+                  `and an array of corrections with original and corrected words.\n\n` +
+                  `Text: "${text}"`;
+
+    try {
+      const response = await this.generateText(prompt, Math.min(1024, text.length * 2), 0.3);
+      
+      // Try to parse the response as JSON
+      try {
+        // Extract JSON from the response (handling potential extra text)
+        const jsonMatch = response.match(/\{.*\}/s);
+        if (jsonMatch) {
+          const result = JSON.parse(jsonMatch[0]);
+          return {
+            original: result.original || text,
+            corrected: result.corrected || text,
+            corrections: Array.isArray(result.corrections) 
+              ? result.corrections 
+              : []
+          };
+        }
+      } catch (parseError) {
+        console.error('Error parsing spellcheck response:', parseError);
+      }
+
+      // Fallback if JSON parsing fails
+      return {
+        original: text,
+        corrected: response,
+        corrections: []
+      };
+    } catch (error) {
+      console.error('Error in spellcheck:', error);
       return {
         original: text,
         corrected: text,
@@ -138,6 +182,11 @@ class LlamaService {
       };
     }
   }
+}
+
+// Helper function to escape special regex characters
+function escapeRegExp(string: string): string {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 // Export a singleton instance
