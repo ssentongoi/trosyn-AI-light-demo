@@ -32,7 +32,7 @@
       "gemma-3n"
     ],
     "gemma-3n": {
-      "status": "error",
+      "status": "ready",
       "path": "../../shared_data/models/gemma3n/model.gguf",
       "format": "gguf",
       "maxTokens": 4096,

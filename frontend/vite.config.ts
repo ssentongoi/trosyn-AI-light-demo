@@ -43,7 +43,7 @@ export default defineConfig(({ mode }) => {
       // Add other global variables here
       'process.env.NODE_ENV': `'${process.env.NODE_ENV}'`,
     },
-    
+
     // Plugins
     plugins: [
       react({
@@ -65,12 +65,18 @@ export default defineConfig(({ mode }) => {
     
     // Development server configuration
     server: {
-      port: 3000,
+      host: '0.0.0.0',
       open: false, // Disable automatic browser opening
-      strictPort: true,
       cors: true,
       fs: {
         strict: true,
+      },
+      proxy: {
+        '/api': {
+          target: 'http://localhost:8000',
+          changeOrigin: true,
+          secure: false,
+        },
       },
     },
     

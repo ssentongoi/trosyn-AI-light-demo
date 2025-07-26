@@ -11,15 +11,20 @@ import type { OutputData, API } from '@editorjs/editorjs';
 import EditorJS from '@editorjs/editorjs';
 import { v4 as uuidv4 } from 'uuid';
 
-import Header from '@editorjs/header';
-import List from '@editorjs/list';
-import Paragraph from '@editorjs/paragraph';
-import TopToolbar from './TopToolbar';
+/**
+ * Dynamically load the minimal set of EditorJS tools we need. Keeping this
+ * small avoids complex union typings that have caused TS errors in the past.
+ */
+const loadTools = async () => {
+  const Header = (await import('@editorjs/header')).default;
+  const List = (await import('@editorjs/list')).default;
+  const Paragraph = (await import('@editorjs/paragraph')).default;
 
-const EDITOR_TOOLS = {
-  header: Header,
-  list: List,
-  paragraph: Paragraph,
+  return {
+    header: Header,
+    list: List,
+    paragraph: Paragraph,
+  } as const;
 };
 
 export interface EditorInstance {
@@ -97,40 +102,48 @@ const Editor = forwardRef<EditorInstance, EditorProps>(
       setError(null);
       await destroyEditor();
 
-      // Defer until after next tick to guarantee holder div exists
-      setTimeout(() => {
-        try {
-          const instance = new EditorJS({
-            holder: holderId.current,
-            data: initialData,
-            autofocus,
-            readOnly,
-            placeholder,
-            tools: EDITOR_TOOLS,
-            async onChange(api: API) {
-              if (!onChange) return;
-              if (saveDebounce.current) clearTimeout(saveDebounce.current);
-              saveDebounce.current = setTimeout(async () => {
-                try {
-                  const saved = await api.saver.save();
-                  await onChange(saved);
-                } catch (err) {
-                  console.error('EditorJS onChange save error', err);
-                }
-              }, 500);
-            },
-            onReady() {
-              editorRef.current = instance;
-              setIsReady(true);
-              setIsLoading(false);
-            },
-          });
-        } catch (err) {
-          console.error('Failed to init EditorJS', err);
-          setError('Failed to initialise editor');
-          setIsLoading(false);
-        }
-      }, 0);
+      try {
+        const tools = await loadTools();
+
+        // Defer until after next tick to guarantee holder div exists
+        setTimeout(() => {
+          try {
+            const instance = new EditorJS({
+              holder: holderId.current,
+              data: initialData,
+              autofocus,
+              readOnly,
+              placeholder,
+              tools,
+              async onChange(api: API) {
+                if (!onChange) return;
+                if (saveDebounce.current) clearTimeout(saveDebounce.current);
+                saveDebounce.current = setTimeout(async () => {
+                  try {
+                    const saved = await api.saver.save();
+                    await onChange(saved);
+                  } catch (err) {
+                    console.error('EditorJS onChange save error', err);
+                  }
+                }, 500);
+              },
+              onReady() {
+                editorRef.current = instance;
+                setIsReady(true);
+                setIsLoading(false);
+              },
+            });
+          } catch (err) {
+            console.error('Failed to init EditorJS', err);
+            setError('Failed to initialise editor');
+            setIsLoading(false);
+          }
+        }, 0);
+      } catch (err) {
+        console.error('Failed to load tools', err);
+        setError('Failed to load editor tools');
+        setIsLoading(false);
+      }
     }, [autofocus, destroyEditor, initialData, onChange, placeholder, readOnly]);
 
     useEffect(() => {
@@ -177,7 +190,6 @@ const Editor = forwardRef<EditorInstance, EditorProps>(
 
     return (
       <div className={className} {...divProps}>
-        <TopToolbar />
         {isLoading && <p>Loading editor…</p>}
         {error && (
           <p style={{ color: 'red' }} data-testid="editor-error">

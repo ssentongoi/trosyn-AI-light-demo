@@ -8,14 +8,18 @@ export function useTauri() {
 
   useEffect(() => {
     const checkTauri = async () => {
-      try {
-        // Test a simple Tauri API call to verify environment
-        await tauriService.fileExists('.');
-        setIsTauri(true);
-      } catch (err) {
-        console.warn('Tauri environment not detected:', err);
+      if (window.__TAURI__) {
+        try {
+          const isTauri = await tauriService.isTauri();
+          setIsTauri(isTauri);
+        } catch (err) {
+          console.warn('Tauri environment not detected:', err);
+          setIsTauri(false);
+        } finally {
+          setIsLoading(false);
+        }
+      } else {
         setIsTauri(false);
-      } finally {
         setIsLoading(false);
       }
     };

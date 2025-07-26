@@ -1,5 +1,4 @@
-// Use dynamic import for ESM compatibility
-const fetch = (await import('node-fetch')).default;
+import type { default as Fetch } from 'node-fetch';
 
 const LLAMA_SERVER_URL = process.env.LLAMA_SERVER_URL || 'http://localhost:8080/completion';
 const DEFAULT_TIMEOUT = 120000; // 120 seconds (2 minutes) - increased for model loading
@@ -46,13 +45,28 @@ interface LlamaCompletionResponse {
 export class LlamaClient {
   private serverUrl: string;
   private timeout: number;
+  private fetch?: Fetch;
+  private isInitialized = false;
 
   constructor(serverUrl: string = LLAMA_SERVER_URL, timeout: number = DEFAULT_TIMEOUT) {
     this.serverUrl = serverUrl;
     this.timeout = timeout;
   }
 
+  async initialize(): Promise<void> {
+    if (this.isInitialized) return;
+    this.fetch = (await import('node-fetch')).default;
+    this.isInitialized = true;
+  }
+
+  private ensureInitialized(): void {
+    if (!this.isInitialized || !this.fetch) {
+      throw new Error('LlamaClient is not initialized. Please call initialize() first.');
+    }
+  }
+
   async complete(params: LlamaCompletionParams): Promise<LlamaCompletionResponse> {
+    this.ensureInitialized();
     const startTime = Date.now();
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
@@ -77,7 +91,7 @@ export class LlamaClient {
           `${requestBody.prompt.substring(0, 100)}...` : requestBody.prompt
       }, null, 2));
 
-      const response = await fetch(this.serverUrl, {
+      const response = await this.fetch!(this.serverUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),

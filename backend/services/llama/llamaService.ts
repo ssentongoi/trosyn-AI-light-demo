@@ -28,6 +28,9 @@ class LlamaService {
    */
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
+
+    // Initialize the underlying client first
+    await this.client.initialize();
     
     try {
       // Test the connection to the LLM server
@@ -82,10 +85,22 @@ class LlamaService {
       return '';
     }
 
-    const prompt = `Please summarize the following text in ${maxLength} words or less:\n\n${text}`;
+    // Use a more structured prompt format that worked well in testing
+    const prompt = `[INST] <<SYS>>You are a helpful AI assistant that creates concise summaries.<</SYS>>
+
+Summarize the following text in ${maxLength} words or less. Focus on the main points and key details:
+
+${text}
+
+Summary:[/INST]`;
     
     try {
-      return await this.generateText(prompt, maxLength, 0.3);
+      const summary = await this.generateText(prompt, maxLength * 2, 0.3);
+      // Clean up the response by removing any remaining instructions or artifacts
+      return summary
+        .replace(/^\s*Summary:\s*/i, '')
+        .replace(/\[\/INST\].*$/is, '')
+        .trim();
     } catch (error) {
       console.error('Error summarizing text:', error);
       // Fallback to simple truncation
@@ -110,11 +125,31 @@ class LlamaService {
       return text; // Nothing to redact
     }
 
-    const prompt = `Please redact the following sensitive information from the text: ${sensitiveInfo.join(', ')}. ` +
-                  `Replace each occurrence with [REDACTED]. Here's the text:\n\n${text}`;
+    // Use a more structured prompt with clear instructions
+    const prompt = `[INST] <<SYS>>You are a security assistant that redacts sensitive information from text.<</SYS>>
+
+Redact all instances of the following sensitive information by replacing them with [REDACTED]:
+${sensitiveInfo.map((item, i) => `- ${item}`).join('\n')}
+
+Text to redact:
+${text}
+
+Redacted text:[/INST]`;
     
     try {
-      return await this.generateText(prompt, text.length * 2, 0.1);
+      const redacted = await this.generateText(prompt, text.length * 2, 0.1);
+      // Clean up the response
+      const cleaned = redacted
+        .replace(/^\s*Redacted text:\s*/i, '')
+        .replace(/\[\/INST\].*$/is, '')
+        .trim();
+      
+      // Verify that all sensitive info was actually redacted
+      const allRedacted = sensitiveInfo.every(info => 
+        !cleaned.toLowerCase().includes(info.toLowerCase())
+      );
+      
+      return allRedacted ? cleaned : text; // Fallback to original if redaction failed
     } catch (error) {
       console.error('Error redacting text:', error);
       // Fallback to simple replacement
@@ -141,25 +176,37 @@ class LlamaService {
       };
     }
 
-    const prompt = `Please correct any spelling or grammar errors in the following text. ` +
-                  `Return a JSON object with the original text, corrected text, ` +
-                  `and an array of corrections with original and corrected words.\n\n` +
-                  `Text: "${text}"`;
+    // Use a more structured prompt with examples
+    const prompt = `[INST] <<SYS>>You are a helpful assistant that corrects spelling and grammar errors in text. Return a valid JSON object with the following structure:
+{
+  "original": "original text here",
+  "corrected": "corrected text here",
+  "corrections": [
+    {"original": "incorrect word", "corrected": "corrected word"}
+  ]
+}
+<</SYS>>
+
+Correct any spelling or grammar errors in the following text. Return only the JSON object with no other text.
+
+Text to correct: "${text.replace(/"/g, '\\"')}"
+
+JSON response:[/INST]`;
 
     try {
-      const response = await this.generateText(prompt, Math.min(1024, text.length * 2), 0.3);
+      const response = await this.generateText(prompt, Math.min(2048, text.length * 3), 0.2);
       
       // Try to parse the response as JSON
       try {
         // Extract JSON from the response (handling potential extra text)
-        const jsonMatch = response.match(/\{.*\}/s);
+        const jsonMatch = response.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           const result = JSON.parse(jsonMatch[0]);
           return {
             original: result.original || text,
             corrected: result.corrected || text,
             corrections: Array.isArray(result.corrections) 
-              ? result.corrections 
+              ? result.corrections.filter((c: any) => c.original && c.corrected)
               : []
           };
         }
@@ -167,10 +214,10 @@ class LlamaService {
         console.error('Error parsing spellcheck response:', parseError);
       }
 
-      // Fallback if JSON parsing fails
+      // Fallback to simple correction without structured data
       return {
         original: text,
-        corrected: response,
+        corrected: text, // Don't use raw response as it might be malformed
         corrections: []
       };
     } catch (error) {

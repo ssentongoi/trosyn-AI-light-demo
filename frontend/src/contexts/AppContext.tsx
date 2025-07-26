@@ -20,6 +20,7 @@ export interface AppState {
   error: string | null;
   theme: 'light' | 'dark';
   sidebarOpen: boolean;
+  isAiAssistantOpen: boolean; // New state for AI Assistant sidebar
   currentCompany: Company | null;
   companies: Company[];
   notifications: Notification[];
@@ -35,6 +36,7 @@ type AppAction =
   | { type: 'SET_USER'; payload: User | null }
   | { type: 'TOGGLE_THEME' }
   | { type: 'TOGGLE_SIDEBAR' }
+  | { type: 'TOGGLE_AI_ASSISTANT' } // New action for AI Assistant
   | { type: 'SET_COMPANY'; payload: Company | null }
   | { type: 'SET_COMPANIES'; payload: Company[] }
   | { type: 'SET_NOTIFICATIONS'; payload: Notification[] }
@@ -52,6 +54,7 @@ interface AppContextType extends AppState {
   loadCompanies: () => Promise<void>;
   toggleTheme: () => void;
   toggleSidebar: () => void;
+  toggleAiAssistant: () => void; // New function for AI Assistant
   setCurrentCompany: (company: Company | null) => void;
   updateUserPreferences: (preferences: NotificationPreferences) => Promise<void>;
   loadNotifications: () => Promise<void>;
@@ -68,6 +71,7 @@ const initialState: AppState = {
   error: null,
   theme: 'light',
   sidebarOpen: true,
+  isAiAssistantOpen: false,
   currentCompany: null,
   companies: [],
   notifications: [],
@@ -141,6 +145,12 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
       return {
         ...state,
         sidebarOpen: !state.sidebarOpen,
+      };
+
+    case 'TOGGLE_AI_ASSISTANT':
+      return {
+        ...state,
+        isAiAssistantOpen: !state.isAiAssistantOpen,
       };
     
     case 'SET_COMPANY':
@@ -250,7 +260,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({
 
   // Update document title when user changes
   useEffect(() => {
-    document.title = state.user ? `Trosyn AI - ${state.user.name}` : 'Trosyn AI';
+    document.title = state.user ? `Trosyn AI - ${state.user.fullName}` : 'Trosyn AI';
   }, [state.user]);
   
   // Load companies
@@ -337,6 +347,11 @@ export const AppProvider: React.FC<AppProviderProps> = ({
     dispatch({ type: 'TOGGLE_SIDEBAR' });
   };
 
+  // Toggle AI Assistant sidebar
+  const toggleAiAssistant = () => {
+    dispatch({ type: 'TOGGLE_AI_ASSISTANT' });
+  };
+
   // Set current company
   const setCurrentCompany = (company: Company | null) => {
     dispatch({ type: 'SET_COMPANY', payload: company });
@@ -373,8 +388,11 @@ export const AppProvider: React.FC<AppProviderProps> = ({
   // Mark a notification as read
   const markAsRead = useCallback(async (notificationId: string) => {
     try {
-      const updatedNotification = await notificationService.markAsRead(notificationId);
-      dispatch({ type: 'UPDATE_NOTIFICATION', payload: updatedNotification });
+      await notificationService.markAsRead(notificationId);
+      const updatedNotification = state.notifications.find(n => n.id === notificationId);
+      if (updatedNotification) {
+        dispatch({ type: 'UPDATE_NOTIFICATION', payload: { ...updatedNotification, read: true } });
+      }
     } catch (error) {
       console.error('Failed to mark notification as read:', error);
       dispatch({ type: 'SET_ERROR', payload: 'Failed to mark notification as read' });
@@ -384,8 +402,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({
   // Mark all notifications as read
   const markAllAsRead = useCallback(async () => {
     try {
-      const { count } = await notificationService.markAllAsRead();
-      if (count > 0) {
+      await notificationService.markAllAsRead();
+      if (state.notifications.some(n => !n.read)) {
         dispatch({ type: 'MARK_ALL_NOTIFICATIONS_READ' });
       }
     } catch (error) {
@@ -397,7 +415,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({
   // Delete a notification
   const deleteNotification = useCallback(async (notificationId: string) => {
     try {
-      await notificationService.deleteNotification(notificationId);
+      await notificationService.remove(notificationId);
       dispatch({ type: 'DELETE_NOTIFICATION', payload: notificationId });
     } catch (error) {
       console.error('Failed to delete notification:', error);
@@ -421,6 +439,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({
     loadCompanies,
     toggleTheme,
     toggleSidebar,
+    toggleAiAssistant,
     setCurrentCompany,
     updateUserPreferences,
     loadNotifications,
