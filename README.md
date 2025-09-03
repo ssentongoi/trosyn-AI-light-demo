@@ -29,11 +29,6 @@ Organizations in low-connectivity regions
 
 Teams needing air-gapped or internal-only document workflows
 
-Note: This is a stripped-down MVP for evaluation purposes only. Final release will include version control, departmental agent packs (HR, Finance, etc.), and full agent supervision.
-
-Would you like me to also generate the README.md file based on this structure with setup instructions, screenshots, and license note?
-
-
 
 
 
